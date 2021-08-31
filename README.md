@@ -29,6 +29,4 @@ sudo make install
 ```
 cd shap_biasing
 make
-cd ../wasserstein
-make
 ```

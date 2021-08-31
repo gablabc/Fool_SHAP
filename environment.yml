@@ -1,0 +1,17 @@
+# run: conda env create --file environment.yml
+# to update run: conda env update --file environment.yml
+# pip install wandb
+
+name: Biased_Sampling
+dependencies:
+- python>=3.9
+- plotly=4.14.3
+- matplotlib=3.3.4
+- pandas=1.3.0
+- scikit-learn=0.24.1
+- ipywidgets=7.6.3
+- ipykernel=5.3.4
+- pip=21.2.4
+- pip:
+  - tqdm==4.59.0
+  - shap==0.39.0

@@ -150,15 +150,6 @@ def load_model(model_name, path, filename):
 
 
 
-SENSITIVE_ATTR = {
-    'adult_income' : ['gender_Female', 'gender_Male'],
-}
-
-PROTECTED_CLASS = {
-    'adult_income' : ['Female'],
-}
-
-
 def get_data(dataset, rseed, encoded=False):
     # Get the data
     filepath = os.path.join("datasets", "preprocessed")
@@ -166,6 +157,7 @@ def get_data(dataset, rseed, encoded=False):
     df = pd.read_csv(os.path.join(filepath, f"{dataset}.csv"))
     X = df.iloc[:, :-1]
     y = df.iloc[:, -1]
+    features = list(X.columns)
     
     # Categorical features ?
     is_cat = np.array([dt.kind == 'O' for dt in X.dtypes])
@@ -178,11 +170,15 @@ def get_data(dataset, rseed, encoded=False):
                         ('identity', FunctionTransformer(), num_cols),
                         ('ordinal', OrdinalEncoder(), cat_cols)]
                     )
-        Xp = encoder.fit_transform(X)
+        X = encoder.fit_transform(X)
+        # Reorganize feature name order
         features = num_cols + cat_cols
+        # Reorganize num_cols cat_cols order
+        n_num = len(num_cols)
+        num_cols = list(range(n_num))
+        cat_cols = [i + n_num for i in range(len(cat_cols))]
     else:
         encoder = None
-        features = X.columns
     
     X_train, X_holdout, y_train, y_holdout = \
                                   train_test_split(X, y, test_size=0.33, 
@@ -191,10 +187,44 @@ def get_data(dataset, rseed, encoded=False):
                                   train_test_split(X_holdout, y_holdout, 
                                                    test_size=0.5, random_state=rseed, 
                                                    stratify=y_holdout)
-    return (X_train.reset_index(drop=True), X_test.reset_index(drop=True), X_explain.reset_index(drop=True)),\
-           (y_train.reset_index(drop=True), y_test.reset_index(drop=True), y_explain.reset_index(drop=True)),\
-            features, encoder, cat_cols, num_cols
+    if encoded:
+        return (X_train, X_test, X_explain),(y_train, y_test, y_explain),\
+                features, encoder, cat_cols, num_cols
+    else:
+        return (X_train.reset_index(drop=True), X_test.reset_index(drop=True), X_explain.reset_index(drop=True)),\
+                (y_train.reset_index(drop=True), y_test.reset_index(drop=True), y_explain.reset_index(drop=True)),\
+                features, encoder, cat_cols, num_cols
 
+
+
+SENSITIVE_ATTR = {
+    'adult_income' : ['gender'],
+}
+
+PROTECTED_CLASS = {
+    'adult_income' : ['Female'],
+}
+
+
+
+def get_foreground_background(X, s, c, background_size, background_seed):
+    # TODO make sure X is encoded (ordinal)
+    assert type(X[0]) == np.ndarray
+    assert True
+
+    # Training set is the first index
+    X_train = X[0]
+    X_test  = X[1]
+
+    np.random.seed(background_seed)
+    # Subsample a portion of the Background
+    background = X_train[X_train[:, s] != c]
+    mini_batch = np.random.choice(range(background.shape[0]), background_size)
+    background = background[mini_batch]
+    # Sample the Foreground i.e. 200 points to explain
+    foreground = X_test[X_test[:, s] == c][:20]
+
+    return foreground, background
 
 if __name__ == "__main__":
     get_data("adult_income", 42, True)

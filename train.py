@@ -32,7 +32,7 @@ if __name__ == "__main__":
     # Prepare the K-Fold cross-validation
     cross_validator = StratifiedKFold(n_splits=args.k, shuffle=True, random_state=42)
     # Get the hyperparameter grid (specific to each model for now)
-    hp_grid = get_hp_grid(os.path.join("hyper_params", f"{args.model}_grid.json"))
+    hp_grid = get_hp_grid(os.path.join("models", "hyper_params", f"{args.model}_grid.json"))
     
     # Load a un-trained (uninitialized) model
     model, hp_grid = init_model(args.model, hp_grid, cat_cols, num_cols)

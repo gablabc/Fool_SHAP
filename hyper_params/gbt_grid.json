@@ -1,0 +1,8 @@
+{
+    "max_depth": "eval_list(range(3, 8))",
+    "min_samples_leaf": "eval_list(range(1, 30))",
+    "n_estimators": "eval_list(range(100, 500, 50))",
+    "max_features": ["auto", "log2"],
+    "learning_rate": [0.1, 0.2, 0.3, 0.4, 0.5],
+    "subsample": [0.25, 0.5, 0.75, 1.0]
+}

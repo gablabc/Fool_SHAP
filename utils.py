@@ -222,7 +222,7 @@ def get_foreground_background(X, s, c, background_size, background_seed):
     mini_batch = np.random.choice(range(background.shape[0]), background_size)
     background = background[mini_batch]
     # Sample the Foreground i.e. 200 points to explain
-    foreground = X_test[X_test[:, s] == c][:20]
+    foreground = X_test[X_test[:, s] == c][:200]
 
     return foreground, background
 

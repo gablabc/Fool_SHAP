@@ -17,13 +17,93 @@ import xgboost as xgb # eXtreme Gradient Boosting Tree (xGBTree)
 
 
 
+def get_data(dataset, rseed, encode=False):
+    # Get the data
+    filepath = os.path.join("datasets", "preprocessed")
+    # Dataset
+    df = pd.read_csv(os.path.join(filepath, f"{dataset}.csv"))
+    # Split indices
+    split_dict = json.load(open(os.path.join(filepath, f"{dataset}_split_rseed_{rseed}.json")))
+    X = df.iloc[:, :-1]
+    y = df.iloc[:, -1]
+    features = list(X.columns)
+    
+    # Categorical features ?
+    is_cat = np.array([dt.kind == 'O' for dt in X.dtypes])
+    cat_cols = list(X.columns.values[is_cat])
+    num_cols = list(X.columns.values[~is_cat])
+
+    # Oridinal encoding of categorical features
+    if encode and not len(cat_cols) == 0:
+        encoder = ColumnTransformer([
+                        ('identity', FunctionTransformer(), num_cols),
+                        ('ordinal', OrdinalEncoder(), cat_cols)]
+                    )
+        # Ordinal encoding will convert to Numpy
+        X = encoder.fit_transform(X)
+        y = y.to_numpy()
+        # Reorganize feature name order
+        features = num_cols + cat_cols
+        # Reorganize num_cols cat_cols order
+        n_num = len(num_cols)
+        num_cols = list(range(n_num))
+        cat_cols = [i + n_num for i in range(len(cat_cols))]
+    else:
+        encoder = None
+    
+    # Splits
+    X_train = X[split_dict["train"]]
+    y_train = y[split_dict["train"]]
+    X_test = X[split_dict["test"]]
+    y_test = y[split_dict["test"]]
+    X_explain = X[split_dict["explain"]]
+    y_explain = y[split_dict["explain"]]
+    
+    if encode:
+        return (X_train, X_test, X_explain),(y_train, y_test, y_explain),\
+                features, encoder, num_cols, cat_cols
+    else:
+        return (X_train.reset_index(drop=True), X_test.reset_index(drop=True), X_explain.reset_index(drop=True)),\
+                (y_train.reset_index(drop=True), y_test.reset_index(drop=True), y_explain.reset_index(drop=True)),\
+                features, encoder, num_cols, cat_cols
+
+
+SENSITIVE_ATTR = {
+    'adult_income' : ['gender'],
+}
+
+PROTECTED_CLASS = {
+    'adult_income' : ['Female'],
+}
+
+
+def get_foreground_background(X, s, c, background_size, background_seed):
+    # TODO make sure X is encoded (ordinal)
+    assert type(X[0]) == np.ndarray
+    assert True
+
+    # Training set is the first index
+    X_train = X[0]
+    X_test  = X[1]
+
+    np.random.seed(background_seed)
+    # Subsample a portion of the Background
+    background = X_train[X_train[:, s] != c]
+    mini_batch = np.random.choice(range(background.shape[0]), background_size)
+    background = background[mini_batch]
+    # Sample the Foreground i.e. 200 points to explain
+    foreground = X_test[X_test[:, s] == c][:200]
+
+    return foreground, background
+
+
+
 MODELS = { 
     'mlp' : MLPClassifier(random_state=1234, max_iter=500),
     'rf' : RandomForestClassifier(random_state=1234),
     'gbt' : GradientBoostingClassifier(random_state=1234),
     'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='logloss')
 }
-
 
 
 def init_model(model_name, hp_grid, cat_cols, num_cols):
@@ -63,6 +143,27 @@ def init_model(model_name, hp_grid, cat_cols, num_cols):
     return model, hp_grid
 
 
+def save_model(model_name, model, path, filename):
+    if model_name == "xgb":
+        # save in JSON format
+        model.save_model(os.path.join(path, f"{filename}.json"))
+    else:
+        # Pickle the model
+        from joblib import dump
+        dump(model, os.path.join(path, f"{filename}.joblib"))
+
+
+def load_model(model_name, path, filename):
+    if model_name == "xgb":
+        # Load the JSON format
+        model = MODELS["xgb"]
+        model.load_model(os.path.join(path, f"{filename}.json"))
+    else:
+        # Un-Pickle the model
+        from joblib import load
+        model = load(os.path.join(path, f"{filename}.joblib"))
+    return model
+
 
 def get_hp_grid(filename):
 
@@ -92,7 +193,6 @@ def get_hp_grid(filename):
     return hp_dict
 
 
-
 def get_best_cv_scores(search, k):
     res = search.cv_results_
     # Get the top-1 hyperparameters
@@ -101,7 +201,6 @@ def get_best_cv_scores(search, k):
     for i in range(k):
         perfs[i] = res[f"split{i}_test_score"][top_one_idx]
     return perfs
-
 
 
 def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter):
@@ -126,105 +225,6 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter):
 
 
 
-def save_model(model_name, model, path, filename):
-    if model_name == "xgb":
-        # save in JSON format
-        model.save_model(os.path.join(path, f"{filename}.json"))
-    else:
-        # Pickle the model
-        from joblib import dump
-        dump(model, os.path.join(path, f"{filename}.joblib"))
-
-
-
-def load_model(model_name, path, filename):
-    if model_name == "xgb":
-        # Load the JSON format
-        model = MODELS["xgb"]
-        model.load_model(os.path.join(path, f"{filename}.json"))
-    else:
-        # Un-Pickle the model
-        from joblib import load
-        model = load(os.path.join(path, f"{filename}.joblib"))
-    return model
-
-
-
-def get_data(dataset, rseed, encoded=False):
-    # Get the data
-    filepath = os.path.join("datasets", "preprocessed")
-    # Train set
-    df = pd.read_csv(os.path.join(filepath, f"{dataset}.csv"))
-    X = df.iloc[:, :-1]
-    y = df.iloc[:, -1]
-    features = list(X.columns)
-    
-    # Categorical features ?
-    is_cat = np.array([dt.kind == 'O' for dt in X.dtypes])
-    cat_cols = list(X.columns.values[is_cat])
-    num_cols = list(X.columns.values[~is_cat])
-
-    # Oridinal encoding of categorical features
-    if encoded and not len(cat_cols) == 0:
-        encoder = ColumnTransformer([
-                        ('identity', FunctionTransformer(), num_cols),
-                        ('ordinal', OrdinalEncoder(), cat_cols)]
-                    )
-        X = encoder.fit_transform(X)
-        # Reorganize feature name order
-        features = num_cols + cat_cols
-        # Reorganize num_cols cat_cols order
-        n_num = len(num_cols)
-        num_cols = list(range(n_num))
-        cat_cols = [i + n_num for i in range(len(cat_cols))]
-    else:
-        encoder = None
-    
-    X_train, X_holdout, y_train, y_holdout = \
-                                  train_test_split(X, y, test_size=0.33, 
-                                                   random_state=rseed, stratify=y)
-    X_test, X_explain, y_test, y_explain = \
-                                  train_test_split(X_holdout, y_holdout, 
-                                                   test_size=0.5, random_state=rseed, 
-                                                   stratify=y_holdout)
-    if encoded:
-        return (X_train, X_test, X_explain),(y_train, y_test, y_explain),\
-                features, encoder, cat_cols, num_cols
-    else:
-        return (X_train.reset_index(drop=True), X_test.reset_index(drop=True), X_explain.reset_index(drop=True)),\
-                (y_train.reset_index(drop=True), y_test.reset_index(drop=True), y_explain.reset_index(drop=True)),\
-                features, encoder, cat_cols, num_cols
-
-
-
-SENSITIVE_ATTR = {
-    'adult_income' : ['gender'],
-}
-
-PROTECTED_CLASS = {
-    'adult_income' : ['Female'],
-}
-
-
-
-def get_foreground_background(X, s, c, background_size, background_seed):
-    # TODO make sure X is encoded (ordinal)
-    assert type(X[0]) == np.ndarray
-    assert True
-
-    # Training set is the first index
-    X_train = X[0]
-    X_test  = X[1]
-
-    np.random.seed(background_seed)
-    # Subsample a portion of the Background
-    background = X_train[X_train[:, s] != c]
-    mini_batch = np.random.choice(range(background.shape[0]), background_size)
-    background = background[mini_batch]
-    # Sample the Foreground i.e. 200 points to explain
-    foreground = X_test[X_test[:, s] == c][:200]
-
-    return foreground, background
-
 if __name__ == "__main__":
-    get_data("adult_income", 42, True)
+    X, y, features, encoder, num_col, cat_col = get_data("adult_income", 0, True)
+    print("Done")

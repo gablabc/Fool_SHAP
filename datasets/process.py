@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
+import json
 import os
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -131,7 +133,17 @@ def get_compas(save_df=False):
 def save(df, dataset):
     df = shuffle(df, random_state=99)
     full_name = os.path.join("preprocessed", f"{dataset}.csv")
+    # Save the whole processed dataset
     df.to_csv(full_name, index=False)
+    # Save the idxs of train/test for 5 splits
+    for s in range(5):
+        train_idx, test_idx = train_test_split(list(range(len(df))), test_size=0.33, 
+                                                            random_state=s, stratify=df.iloc[:, -1])
+        test_idx, explain_idx = train_test_split(test_idx, test_size=0.5, random_state=s, 
+                                                            stratify=df.iloc[test_idx, -1])
+
+        json.dump({"train" : train_idx, "test" : test_idx, "explain" : explain_idx},
+                   open(os.path.join("preprocessed", f"{dataset}_split_rseed_{s}.json"), "w"))
 
 
 

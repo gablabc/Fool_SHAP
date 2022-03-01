@@ -16,104 +16,31 @@ from sklearn.ensemble import GradientBoostingClassifier # Gradient Boosting Mach
 import xgboost as xgb # eXtreme Gradient Boosting Tree (xGBTree)
 
 
-
-def get_data(dataset, rseed, encode=False):
-    # Get the data
-    filepath = os.path.join("datasets", "preprocessed")
-    # Dataset
-    df = pd.read_csv(os.path.join(filepath, f"{dataset}.csv"))
-    # Split indices
-    split_dict = json.load(open(os.path.join(filepath, f"{dataset}_split_rseed_{rseed}.json")))
-    X = df.iloc[:, :-1]
-    y = df.iloc[:, -1]
-    features = list(X.columns)
+def get_encoders(df_X, model_name):
     
     # Categorical features ?
-    is_cat = np.array([dt.kind == 'O' for dt in X.dtypes])
-    cat_cols = list(X.columns.values[is_cat])
-    num_cols = list(X.columns.values[~is_cat])
+    is_cat = np.array([dt.kind == 'O' for dt in df_X.dtypes])
+    cat_cols = list(df_X.columns.values[is_cat])
+    num_cols = list(df_X.columns.values[~is_cat])
 
-    # Oridinal encoding of categorical features
-    if encode and not len(cat_cols) == 0:
-        encoder = ColumnTransformer([
-                        ('identity', FunctionTransformer(), num_cols),
-                        ('ordinal', OrdinalEncoder(), cat_cols)]
-                    )
-        # Ordinal encoding will convert to Numpy
-        X = encoder.fit_transform(X)
-        y = y.to_numpy()
-        # Reorganize feature name order
-        features = num_cols + cat_cols
+    # Ordinal encoding is required for SHAP
+    if not len(cat_cols) == 0:
+        ordinal_encoder = \
+                    ColumnTransformer([
+                                ('identity', FunctionTransformer(), num_cols),
+                                ('ordinal', OrdinalEncoder(), cat_cols)]
+                    ).fit(df_X)
+        X = ordinal_encoder.transform(df_X)
         # Reorganize num_cols cat_cols order
         n_num = len(num_cols)
         num_cols = list(range(n_num))
         cat_cols = [i + n_num for i in range(len(cat_cols))]
-    else:
-        encoder = None
-    
-    # Splits
-    X_train = X[split_dict["train"]]
-    y_train = y[split_dict["train"]]
-    X_test = X[split_dict["test"]]
-    y_test = y[split_dict["test"]]
-    X_explain = X[split_dict["explain"]]
-    y_explain = y[split_dict["explain"]]
-    
-    if encode:
-        return (X_train, X_test, X_explain),(y_train, y_test, y_explain),\
-                features, encoder, num_cols, cat_cols
-    else:
-        return (X_train.reset_index(drop=True), X_test.reset_index(drop=True), X_explain.reset_index(drop=True)),\
-                (y_train.reset_index(drop=True), y_test.reset_index(drop=True), y_explain.reset_index(drop=True)),\
-                features, encoder, num_cols, cat_cols
 
-
-SENSITIVE_ATTR = {
-    'adult_income' : ['gender'],
-}
-
-PROTECTED_CLASS = {
-    'adult_income' : ['Female'],
-}
-
-
-def get_foreground_background(X, s, c, background_size, background_seed):
-    # TODO make sure X is encoded (ordinal)
-    assert type(X[0]) == np.ndarray
-    assert True
-
-    # Training set is the first index
-    X_train = X[0]
-    X_test  = X[1]
-
-    np.random.seed(background_seed)
-    # Subsample a portion of the Background
-    background = X_train[X_train[:, s] != c]
-    mini_batch = np.random.choice(range(background.shape[0]), background_size)
-    background = background[mini_batch]
-    # Sample the Foreground i.e. 200 points to explain
-    foreground = X_test[X_test[:, s] == c][:200]
-
-    return foreground, background
-
-
-
-MODELS = { 
-    'mlp' : MLPClassifier(random_state=1234, max_iter=500),
-    'rf' : RandomForestClassifier(random_state=1234),
-    'gbt' : GradientBoostingClassifier(random_state=1234),
-    'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='logloss')
-}
-
-
-def init_model(model_name, hp_grid, cat_cols, num_cols):
-        # XGB inherently supports categorical features
+    # XGB inherently supports categorical features?
     if model_name == 'xgb':
-        model = MODELS[model_name]
-    # Sklearn does not so I make a Pipeline
+        ohe_preprocessor = None
+    # Sklearn does not so I must make a Pipeline
     else:
-        steps = []
-
         # Some models require rescaling the features
         if model_name == "mlp":
             scaler = StandardScaler()
@@ -128,19 +55,102 @@ def init_model(model_name, hp_grid, cat_cols, num_cols):
         else:
             ohe = FunctionTransformer()
 
-        steps.append( ('process', ColumnTransformer([
-                                    ('scaler', scaler, num_cols),
-                                    ('ohe', ohe, cat_cols)]) ) 
-                    )
-        steps.append(('predictor', MODELS[model_name]))
-        model = Pipeline(steps)
+        ohe_preprocessor = ColumnTransformer([
+                                        ('scaler', scaler, num_cols),
+                                        ('ohe', ohe, cat_cols)]).fit(X)
+    return ordinal_encoder, ohe_preprocessor
 
-        # Change the names of hyperparams in grid
-        all_keys = list(hp_grid.keys())
-        for key in all_keys:
-            hp_grid[f"predictor__{key}"] = hp_grid.pop(key)
 
-    return model, hp_grid
+def get_data(dataset, model_name, rseed):
+    # Get the data
+    filepath = os.path.join("datasets", "preprocessed")
+    # Dataset
+    df = pd.read_csv(os.path.join(filepath, f"{dataset}.csv"))
+    # Split indices
+    split_dict = json.load(open(os.path.join(filepath, f"{dataset}_split_rseed_{rseed}.json")))
+    X = df.iloc[:, :-1]
+    y = df.iloc[:, -1]
+    features = list(X.columns)
+    ordinal_encoder, ohe_encoder = get_encoders(X, model_name)
+    
+    # Splits
+    X_split = {key : X.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test", "explain"]}
+    y_split = {key : y.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test", "explain"]}
+    
+    return X_split, y_split, features, ordinal_encoder, ohe_encoder
+
+
+SENSITIVE_ATTR = {
+    'adult_income' : 'gender',
+    'compas' : 'race'
+}
+
+PROTECTED_CLASS = {
+    'adult_income' : 'Female',
+    'compas' : 'African-American'
+}
+
+
+def get_foreground_background(X_split, dataset, background_size, background_seed):
+
+    # Training set is the first index
+    df_train = X_split["train"]
+    df_test  = X_split["test"]
+
+    np.random.seed(background_seed)
+    # Subsample a portion of the Background
+    background = df_train.loc[df_train[SENSITIVE_ATTR[dataset]] != PROTECTED_CLASS[dataset]]
+    mini_batch = np.random.choice(range(background.shape[0]), background_size)
+    background = background.iloc[mini_batch]
+    # Sample the Foreground i.e. 200 points to explain
+    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]].iloc[:200]
+
+    return foreground, background
+
+
+###################################################################################
+
+
+MODELS = { 
+    'mlp' : MLPClassifier(random_state=1234, max_iter=500),
+    'rf' : RandomForestClassifier(random_state=1234, n_jobs=-1),
+    'gbt' : GradientBoostingClassifier(random_state=1234),
+    'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='logloss')
+}
+
+
+#def init_model(model_name, hp_grid, cat_cols, num_cols):
+#    
+#    model = MODELS[model_name]
+#    # XGB inherently supports categorical features?
+#    if model_name == 'xgb':
+#        preprocessor = None
+#    # Sklearn does not so I make a Pipeline
+#    else:
+#        # Some models require rescaling the features
+#        if model_name == "mlp":
+#            scaler = StandardScaler()
+#        # Otherwise Identity map
+#        else:
+#            scaler = FunctionTransformer()
+#        
+#        # One Hot Encode features
+#        if not len(cat_cols) == 0:
+#            ohe = OneHotEncoder(sparse=False)
+#        # Or not ...
+#        else:
+#            ohe = FunctionTransformer()
+#
+#        preprocessor = ColumnTransformer([
+#                                    ('scaler', scaler, num_cols),
+#                                    ('ohe', ohe, cat_cols)])
+#
+#        # Change the names of hyperparams in grid
+#        all_keys = list(hp_grid.keys())
+#        for key in all_keys:
+#            hp_grid[f"predictor__{key}"] = hp_grid.pop(key)
+#
+#    return preprocessor, model, hp_grid
 
 
 def save_model(model_name, model, path, filename):
@@ -226,5 +236,5 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter):
 
 
 if __name__ == "__main__":
-    X, y, features, encoder, num_col, cat_col = get_data("adult_income", 0, True)
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = get_data("default_credit", "rf", 0)
     print("Done")

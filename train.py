@@ -7,7 +7,7 @@ import os
 from sklearn.model_selection import StratifiedKFold
 
 # Local imports
-from utils import get_data, init_model
+from utils import get_data, MODELS
 from utils import get_best_cv_model, get_hp_grid, save_model
 
 
@@ -24,10 +24,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Get the data
-    X, y, _, _, cat_cols, num_cols = get_data(args.dataset, rseed=args.rseed, encoded=True)
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
+                                        get_data(args.dataset, args.model, rseed=args.rseed)
     # Training set is the first index
-    X = X[0]
-    y = y[0]
+    X = X_split["train"]
+    y = y_split["train"]
+
+    # Process the data
+    X = ordinal_encoder.transform(X)
+    y = y.to_numpy()
+
+    if ohe_encoder is not None:
+        # Preprocessing converts to np.ndarray
+        X = ohe_encoder.transform(X)
 
     # Prepare the K-Fold cross-validation
     cross_validator = StratifiedKFold(n_splits=args.k, shuffle=True, random_state=42)
@@ -35,7 +44,7 @@ if __name__ == "__main__":
     hp_grid = get_hp_grid(os.path.join("models", "hyper_params", f"{args.model}_grid.json"))
     
     # Load a un-trained (uninitialized) model
-    model, hp_grid = init_model(args.model, hp_grid, cat_cols, num_cols)
+    model = MODELS[args.model]
 
     # Grid Search
     best_model, perfs = get_best_cv_model(X, y, model, hp_grid, 

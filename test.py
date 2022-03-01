@@ -1,9 +1,6 @@
 import argparse
-import pandas as pd
 import numpy as np
 import os
-
-# Imports for data splitting
 from sklearn.metrics import roc_auc_score
 
 # Local imports
@@ -21,20 +18,27 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Get the data
-    X, y, _, _, cat_cols, num_cols = get_data(args.dataset, rseed=args.rseed, encoded=True)
-    # Test set is the second index
-    X = X[1]
-    y = y[1]
-    
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
+                                        get_data(args.dataset, args.model, rseed=args.rseed)
+    # Training set is the first index
+    X = X_split["test"]
+    y = y_split["test"]
+
+    # Process the data
+    X = ordinal_encoder.transform(X)
+    y = y.to_numpy()
+
+    if ohe_encoder is not None:
+        # Preprocessing converts to np.ndarray
+        X = ohe_encoder.transform(X)
+
     # Load the model
     filename = f"{args.model}_{args.dataset}_{args.rseed}"
     model = load_model(args.model, "models", filename)
-    model.set_params(predictor__n_jobs=-1)
     
     # Error on the test set
     proba = model.predict_proba(X)[:, 1]
     accuracy = 100 * np.mean( (proba>=0.5) == y)
-    # TODO AUC
     AUC = roc_auc_score(y, proba)
     
     performance_file = os.path.join("models", "performance.csv")

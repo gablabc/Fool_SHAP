@@ -2,13 +2,11 @@
 
 import shap
 from shap.maskers import Independent
-
 import argparse
-import pandas as pd
 import numpy as np
 import os
 
-# Local importspyt
+# Local imports
 from utils import get_data, get_foreground_background, load_model
 
 
@@ -27,18 +25,31 @@ if __name__ == "__main__":
     # Get the data
     filepath = os.path.join("datasets", "preprocessed", args.dataset)
     # Get the data
-    X, y, features, encoder, cat_cols, num_cols = get_data(args.dataset, rseed=args.rseed, encoded=True)
-    
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
+                                        get_data(args.dataset, args.model, rseed=args.rseed)
+
     # Get B and F
-    foreground, background = get_foreground_background(X, -1, 0,
+    foreground, background = get_foreground_background(X_split, args.dataset,
                                                        args.background_size, args.background_seed)
     
+    # Ordinally encode B and F
+    background = ordinal_encoder.transform(background)
+    foreground = ordinal_encoder.transform(foreground)
+    # Permute features to match ordinal encoding
+    features = ordinal_encoder.transformers_[0][2] + ordinal_encoder.transformers_[1][2] 
+
     # Load the model
     filename = f"{args.model}_{args.dataset}_{args.rseed}"
     model = load_model(args.model, "models", filename)
-    model.set_params(predictor__n_jobs=-1)
 
-    black_box = model.predict_proba
+    # Generate a black box to explain
+    if ohe_encoder is not None:
+        # Preprocessing converts to np.ndarray
+        black_box = lambda x: model.predict_proba(ohe_encoder.transform(x))
+    else:
+        black_box = model.predict_proba
+
+    # Fairness
     demographic_parity = black_box(foreground)[:, 1].mean() - \
                          black_box(background)[:, 1].mean()
     print(f"Demographic Parity : {demographic_parity:.3f}")
@@ -46,10 +57,10 @@ if __name__ == "__main__":
     # ## Tabular data with independent (Shapley value) masking
     mask = Independent(background, max_samples=args.background_size)
     # build an Exact explainer and explain the model predictions on the given dataset
-    explainer = shap.explainers.Exact(model.predict_proba, mask)
+    explainer = shap.explainers.Exact(black_box, mask)
     shap_values = explainer(foreground)[...,1].values
 
-    # TODO Shapley values should sum to the Demographic Parity
+    # Shapley values should sum to the Demographic Parity
     assert np.abs(demographic_parity - shap_values.mean(0).sum()) < 1e-14
     
     # 3d tensor with index (foreground_idx, feature_idx, background_idx)
@@ -64,10 +75,9 @@ if __name__ == "__main__":
     Phis = phi_z_i_x.mean(0).T
 
     save_path = os.path.join("attacks", "Phis")
-    filename = f"Phis_{args.model}_{args.dataset}_{args.rseed}_"
-    filename += f"{args.background_size}_{args.background_seed}"
+    filename = f"Phis_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    filename += f"background_size_{args.background_size}_seed_{args.background_seed}"
 
     # Save Phis locally
     print(Phis.shape)
     np.save(os.path.join(save_path, filename), Phis)
-    

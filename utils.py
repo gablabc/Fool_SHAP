@@ -5,19 +5,19 @@ import json, os
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import RandomizedSearchCV
 
 # Import for Construct Defect Models (Classification)
 from sklearn.ensemble import RandomForestClassifier # Random Forests
 from sklearn.neural_network import MLPClassifier # Neural Network
-from sklearn.ensemble import GradientBoostingClassifier # Gradient Boosting Machine (GBM)
+from sklearn.ensemble import GradientBoostingClassifier # Gradient Boosted Trees (GBT)
 import xgboost as xgb # eXtreme Gradient Boosting Tree (xGBTree)
 
 
 def get_encoders(df_X, model_name):
-    
+    """ Fit a ordinal and ohe encoders on the whole dataset """
+
     # Categorical features ?
     is_cat = np.array([dt.kind == 'O' for dt in df_X.dtypes])
     cat_cols = list(df_X.columns.values[is_cat])
@@ -36,32 +36,29 @@ def get_encoders(df_X, model_name):
         num_cols = list(range(n_num))
         cat_cols = [i + n_num for i in range(len(cat_cols))]
 
-    # XGB inherently supports categorical features?
-    if model_name == 'xgb':
-        ohe_preprocessor = None
-    # Sklearn does not so I must make a Pipeline
+    # Some models require rescaling numerical features
+    if model_name == "mlp":
+        scaler = StandardScaler()
+    # Otherwise Identity map
     else:
-        # Some models require rescaling the features
-        if model_name == "mlp":
-            scaler = StandardScaler()
-        # Otherwise Identity map
-        else:
-            scaler = FunctionTransformer()
-        
-        # One Hot Encode features
-        if not len(cat_cols) == 0:
-            ohe = OneHotEncoder(sparse=False)
-        # Or not ...
-        else:
-            ohe = FunctionTransformer()
+        scaler = FunctionTransformer()
+    
+    # One Hot Encode features
+    if not len(cat_cols) == 0:
+        ohe = OneHotEncoder(sparse=False)
+    # Or not ...
+    else:
+        ohe = FunctionTransformer()
 
-        ohe_preprocessor = ColumnTransformer([
-                                        ('scaler', scaler, num_cols),
-                                        ('ohe', ohe, cat_cols)]).fit(X)
+    ohe_preprocessor = ColumnTransformer([
+                                    ('scaler', scaler, num_cols),
+                                    ('ohe', ohe, cat_cols)]).fit(X)
+    
     return ordinal_encoder, ohe_preprocessor
 
 
 def get_data(dataset, model_name, rseed):
+    """ Load the data, split it, and get encoders """
     # Get the data
     filepath = os.path.join("datasets", "preprocessed")
     # Dataset
@@ -92,7 +89,10 @@ PROTECTED_CLASS = {
 
 
 def get_foreground_background(X_split, dataset, background_size, background_seed):
-
+    """ 
+    Load foreground and background distributions (F and B in the paper) based
+    on the sensitive attribute
+    """
     # Training set is the first index
     df_train = X_split["train"]
     df_test  = X_split["test"]
@@ -108,49 +108,17 @@ def get_foreground_background(X_split, dataset, background_size, background_seed
     return foreground, background
 
 
+
 ###################################################################################
+
 
 
 MODELS = { 
     'mlp' : MLPClassifier(random_state=1234, max_iter=500),
     'rf' : RandomForestClassifier(random_state=1234, n_jobs=-1),
     'gbt' : GradientBoostingClassifier(random_state=1234),
-    'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='logloss')
+    'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='error', use_label_encoder=False)
 }
-
-
-#def init_model(model_name, hp_grid, cat_cols, num_cols):
-#    
-#    model = MODELS[model_name]
-#    # XGB inherently supports categorical features?
-#    if model_name == 'xgb':
-#        preprocessor = None
-#    # Sklearn does not so I make a Pipeline
-#    else:
-#        # Some models require rescaling the features
-#        if model_name == "mlp":
-#            scaler = StandardScaler()
-#        # Otherwise Identity map
-#        else:
-#            scaler = FunctionTransformer()
-#        
-#        # One Hot Encode features
-#        if not len(cat_cols) == 0:
-#            ohe = OneHotEncoder(sparse=False)
-#        # Or not ...
-#        else:
-#            ohe = FunctionTransformer()
-#
-#        preprocessor = ColumnTransformer([
-#                                    ('scaler', scaler, num_cols),
-#                                    ('ohe', ohe, cat_cols)])
-#
-#        # Change the names of hyperparams in grid
-#        all_keys = list(hp_grid.keys())
-#        for key in all_keys:
-#            hp_grid[f"predictor__{key}"] = hp_grid.pop(key)
-#
-#    return preprocessor, model, hp_grid
 
 
 def save_model(model_name, model, path, filename):
@@ -176,7 +144,7 @@ def load_model(model_name, path, filename):
 
 
 def get_hp_grid(filename):
-
+    """ Get the gp_grid from a json file """
     def to_eval(string):
         if type(string) == str:
             split = string.split("_")
@@ -213,18 +181,16 @@ def get_best_cv_scores(search, k):
     return perfs
 
 
-def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter):
+def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jobs):
     # Try out default HP
     best_cv_scores = cross_val_score(estimator, X, y, cv=cross_validator, scoring='roc_auc')
     model = estimator.fit(X, y)
 
     # Try out Random Search
-    hp_search = RandomizedSearchCV(estimator, param_grid, scoring='roc_auc', 
+    hp_search = RandomizedSearchCV(estimator, param_grid, scoring='roc_auc', n_jobs=n_jobs,
                                    cv=cross_validator, n_iter=n_iter, random_state=42, verbose=2)
     hp_search.fit(X, y)
 
-    #print(np.max(hp_search.cv_results_['mean_test_score']) )``
-    #print(best_cv_scores.mean())
     if np.max(hp_search.cv_results_['mean_test_score']) - 0.0005 > best_cv_scores.mean():
         print("Use fine-tuned values")
         best_cv_scores =  get_best_cv_scores(hp_search, cross_validator.n_splits)

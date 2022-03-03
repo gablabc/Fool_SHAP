@@ -1,0 +1,9 @@
+{
+    "max_depth": "eval_list(range(1, 20, 1)) + [None]",
+    "n_estimators": "eval_list(range(100, 500, 50))",
+    "learning_rate": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "min_child_weight": "eval_np.logspace(0, 2, 10)",
+    "colsample_bylevel": "eval_np.linspace(0.5, 1., 10)",
+    "subsample": "eval_np.linspace(0.5, 1., 10)",
+    "gamma": "eval_np.logspace(-4, 1, 10)"
+}

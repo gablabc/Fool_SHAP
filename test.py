@@ -27,9 +27,8 @@ if __name__ == "__main__":
     # Process the data
     X = ordinal_encoder.transform(X)
     y = y.to_numpy()
-
+    # Some model may perhaps not require OHE
     if ohe_encoder is not None:
-        # Preprocessing converts to np.ndarray
         X = ohe_encoder.transform(X)
 
     # Load the model
@@ -48,4 +47,4 @@ if __name__ == "__main__":
             file.write("dataset,model,rseed,accuracy,AUC\n")
     # Append new results to the file
     with open(performance_file, 'a') as file:
-        file.write(f"{args.dataset},{args.model},{args.rseed},{accuracy:.2f},{AUC:.2f}")
+        file.write(f"{args.dataset},{args.model},{args.rseed},{accuracy:.2f},{AUC:.2f}\n")

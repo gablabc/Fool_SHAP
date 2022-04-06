@@ -29,8 +29,8 @@ if __name__ == "__main__":
                                         get_data(args.dataset, args.model, rseed=args.rseed)
 
     # Get B and F
-    foreground, background = get_foreground_background(X_split, args.dataset,
-                                                       args.background_size, args.background_seed)
+    foreground, background, mini_batch_idx = get_foreground_background(X_split, args.dataset,
+                                                    args.background_size, args.background_seed)
     
     # Ordinally encode B and F
     background = ordinal_encoder.transform(background)
@@ -61,18 +61,18 @@ if __name__ == "__main__":
     shap_values = explainer(foreground)[...,1].values
 
     # Shapley values should sum to the Demographic Parity
-    assert np.abs(demographic_parity - shap_values.mean(0).sum()) < 1e-14
+    assert np.allclose(demographic_parity, shap_values.mean(0).sum())
     
     # 3d tensor with index (foreground_idx, feature_idx, background_idx)
-    phi_z_i_x = np.stack(explainer.values_all_background)[:, :, 1, :]
+    phi_x_i_z = np.stack(explainer.values_all_background)[:, :, 1, :]
 
-    # Assert that we can to the attributions for
+    # Assert that we can do the attributions for
     # each background sample separately
-    assert np.max(shap_values - phi_z_i_x.mean(-1)) < 1e-14
+    assert np.max(shap_values - phi_x_i_z.mean(-1)) < 1e-14
 
     # The Phis represent how a single background sample
-    # affects the Global SHAP values Phi(f, F, B) in the paper
-    Phis = phi_z_i_x.mean(0).T
+    # affects the Global SHAP values Phi(f, F, B)
+    Phis = phi_x_i_z.mean(0).T
 
     save_path = os.path.join("attacks", "Phis")
     filename = f"Phis_{args.model}_{args.dataset}_rseed_{args.rseed}_"
@@ -80,4 +80,4 @@ if __name__ == "__main__":
 
     # Save Phis locally
     print(Phis.shape)
-    np.save(os.path.join(save_path, filename), Phis)
+    np.save(os.path.join(save_path, filename), np.column_stack((mini_batch_idx, Phis)) )

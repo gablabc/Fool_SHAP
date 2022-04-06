@@ -79,12 +79,14 @@ def get_data(dataset, model_name, rseed):
 
 SENSITIVE_ATTR = {
     'adult_income' : 'gender',
-    'compas' : 'race'
+    'compas' : 'race',
+    'default_credit' : 'SEX'
 }
 
 PROTECTED_CLASS = {
     'adult_income' : 'Female',
-    'compas' : 'African-American'
+    'compas' : 'African-American',
+    'default_credit' : 'Female'
 }
 
 
@@ -100,12 +102,13 @@ def get_foreground_background(X_split, dataset, background_size, background_seed
     np.random.seed(background_seed)
     # Subsample a portion of the Background
     background = df_train.loc[df_train[SENSITIVE_ATTR[dataset]] != PROTECTED_CLASS[dataset]]
-    mini_batch = np.random.choice(range(background.shape[0]), background_size)
-    background = background.iloc[mini_batch]
-    # Sample the Foreground i.e. 200 points to explain
-    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]].iloc[:200]
+    print(background.shape)
+    mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
+    background = background.iloc[mini_batch_idx]
+    # Sample the Foreground (same size as background)
+    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]].iloc[:background_size]
 
-    return foreground, background
+    return foreground, background, mini_batch_idx
 
 
 
@@ -185,6 +188,7 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jo
     # Try out default HP
     best_cv_scores = cross_val_score(estimator, X, y, cv=cross_validator, scoring='roc_auc')
     model = estimator.fit(X, y)
+    print("bob")
 
     # Try out Random Search
     hp_search = RandomizedSearchCV(estimator, param_grid, scoring='roc_auc', n_jobs=n_jobs,

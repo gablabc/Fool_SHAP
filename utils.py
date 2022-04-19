@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import json, os
+from scipy.stats import norm, ks_2samp
 
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
@@ -90,7 +91,7 @@ PROTECTED_CLASS = {
 }
 
 
-def get_foreground_background(X_split, dataset, background_size, background_seed):
+def get_foreground_background(X_split, dataset, background_size=None, background_seed=None):
     """ 
     Load foreground and background distributions (F and B in the paper) based
     on the sensitive attribute
@@ -99,16 +100,22 @@ def get_foreground_background(X_split, dataset, background_size, background_seed
     df_train = X_split["train"]
     df_test  = X_split["test"]
 
-    np.random.seed(background_seed)
+    if background_seed is not None:
+        np.random.seed(background_seed)
     # Subsample a portion of the Background
     background = df_train.loc[df_train[SENSITIVE_ATTR[dataset]] != PROTECTED_CLASS[dataset]]
-    print(background.shape)
-    mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
-    background = background.iloc[mini_batch_idx]
-    # Sample the Foreground (same size as background)
-    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]].iloc[:background_size]
+    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]]
+    #print(background.shape)
+    
+    if background_size is not None:
+        mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
+        background = background.iloc[mini_batch_idx]
+        # Sample the Foreground (same size as background)
+        foreground = foreground.iloc[:background_size]
 
-    return foreground, background, mini_batch_idx
+        return foreground, background, mini_batch_idx
+    else:
+        return foreground, background
 
 
 
@@ -202,6 +209,41 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jo
     else:
         print("Use default values")
     return model, best_cv_scores
+
+
+def multidim_KS(sample1, sample2, significance):
+    detection = 0
+    # Do one KS test per feature and apply Bonferri correction
+    n_features = sample1.shape[1]
+    for f in range(n_features):
+        # Compute KS test
+        _, p_val = ks_2samp(sample1[:, f], sample2[:, f])
+        if p_val < significance / n_features:
+            detection = 1
+            break
+    return detection
+
+
+
+def audit_detection(b_preds, f_preds, b_samples, f_samples, significance):
+    # Tests conducted by the audit to see if the background and foreground provided
+    # are indeed subsampled uniformly from the data.
+    for distribution, samples in zip([b_preds, f_preds],
+                                     [b_samples, f_samples]):
+        n_samples = len(samples)
+        # KS test
+        for _ in range(10):
+            unbiased_preds = distribution[np.random.choice(len(distribution), n_samples)]
+            _, p_val = ks_2samp(samples, unbiased_preds)
+            if p_val < significance / 40:
+                return 1
+
+        # Wald test
+        W = np.sqrt(n_samples) * (samples.mean() - distribution.mean()) / distribution.std()
+        # Wald detection
+        if np.abs(W) > -norm.ppf(significance/8):
+            return 1
+    return 0
 
 
 

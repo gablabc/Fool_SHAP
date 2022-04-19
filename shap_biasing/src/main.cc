@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <cmath>
 
 using namespace std;
 using namespace lemon;
@@ -38,7 +39,7 @@ double distance(MyFeature x, MyFeature y) {
       ++j;
     } 
   }
-  return score;
+  return sqrt(score);
 }
 
 
@@ -102,7 +103,7 @@ vector<double> biasedSampling(vector<Datum> data, double lambda) {
   for (int i = 0; i < left.size(); ++i) {
     for (int j = 0; j < right.size(); ++j) {
       SmartDigraph::Arc a = g.addArc(left[i], right[j]);
-      capacity[a] = 1; 
+      capacity[a] = 1;
       cost[a] = lambda * distance(data[i].feature, data[j].feature);
     }
   }

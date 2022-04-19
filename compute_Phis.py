@@ -18,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
-    parser.add_argument('--background_size', type=int, default=200, help='Size of background minibatch')
+    parser.add_argument('--background_size', type=int, default=1000, help='Size of background minibatch')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
     args = parser.parse_args()
 
@@ -38,6 +38,10 @@ if __name__ == "__main__":
     # Permute features to match ordinal encoding
     features = ordinal_encoder.transformers_[0][2] + ordinal_encoder.transformers_[1][2] 
 
+    # Subsets of background and foreground
+    subset_background = background[mini_batch_idx]
+    subset_foreground = foreground[:200]
+
     # Load the model
     filename = f"{args.model}_{args.dataset}_{args.rseed}"
     model = load_model(args.model, "models", filename)
@@ -50,15 +54,15 @@ if __name__ == "__main__":
         black_box = model.predict_proba
 
     # Fairness
-    demographic_parity = black_box(foreground)[:, 1].mean() - \
-                         black_box(background)[:, 1].mean()
+    demographic_parity = black_box(subset_foreground)[:, 1].mean() - \
+                         black_box(subset_background)[:, 1].mean()
     print(f"Demographic Parity : {demographic_parity:.3f}")
     
     # ## Tabular data with independent (Shapley value) masking
-    mask = Independent(background, max_samples=args.background_size)
+    mask = Independent(subset_background, max_samples=args.background_size)
     # build an Exact explainer and explain the model predictions on the given dataset
     explainer = shap.explainers.Exact(black_box, mask)
-    shap_values = explainer(foreground)[...,1].values
+    shap_values = explainer(subset_foreground)[...,1].values
 
     # Shapley values should sum to the Demographic Parity
     assert np.allclose(demographic_parity, shap_values.mean(0).sum())

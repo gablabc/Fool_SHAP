@@ -109,10 +109,6 @@ def get_foreground_background(X_split, dataset, background_size=None, background
     
     if background_size is not None:
         mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
-        background = background.iloc[mini_batch_idx]
-        # Sample the Foreground (same size as background)
-        foreground = foreground.iloc[:background_size]
-
         return foreground, background, mini_batch_idx
     else:
         return foreground, background

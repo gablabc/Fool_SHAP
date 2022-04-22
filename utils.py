@@ -230,7 +230,7 @@ def audit_detection(b_preds, f_preds, b_samples, f_samples, significance):
         # KS test
         for _ in range(10):
             unbiased_preds = distribution[np.random.choice(len(distribution), n_samples)]
-            _, p_val = ks_2samp(samples, unbiased_preds)
+            _, p_val = ks_2samp(samples.ravel(), unbiased_preds.ravel())
             if p_val < significance / 40:
                 return 1
 

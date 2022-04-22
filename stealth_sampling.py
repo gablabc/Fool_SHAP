@@ -7,7 +7,7 @@ from sklearn.datasets import dump_svmlight_file
 
 def attack_SHAP(data, coeffs, regul_lambda = 10, path='./', timeout=10.0):
     while True:
-        data += 1e-8 * np.random.randn(*data.shape)
+        data += 1e-5 * np.random.randn(*data.shape)
         dump_svmlight_file(data, coeffs, f"./input.txt")
         cmd = f"{path}shap_biasing/main ./input.txt {regul_lambda} > ./output.txt"
         proc = subprocess.Popen('exec ' + cmd, shell=True)

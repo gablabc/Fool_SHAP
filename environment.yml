@@ -13,4 +13,4 @@ dependencies:
 - pip=21.2.4
 - pip:
   - tqdm==4.59.0
-  - xgboost
+  - xgboost==1.5.0

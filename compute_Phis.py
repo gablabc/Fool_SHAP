@@ -18,7 +18,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
-    parser.add_argument('--background_size', type=int, default=1000, help='Size of background minibatch')
+    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
     args = parser.parse_args()
 
@@ -31,7 +31,9 @@ if __name__ == "__main__":
     # Get B and F
     foreground, background, mini_batch_idx = get_foreground_background(X_split, args.dataset,
                                                     args.background_size, args.background_seed)
-    
+    #print(len(mini_batch_idx))
+    #print(mini_batch_idx)
+
     # Ordinally encode B and F
     background = ordinal_encoder.transform(background)
     foreground = ordinal_encoder.transform(foreground)
@@ -59,7 +61,7 @@ if __name__ == "__main__":
     print(f"Demographic Parity : {demographic_parity:.3f}")
     
     # ## Tabular data with independent (Shapley value) masking
-    mask = Independent(subset_background, max_samples=args.background_size)
+    mask = Independent(subset_background, max_samples=len(mini_batch_idx))
     # build an Exact explainer and explain the model predictions on the given dataset
     explainer = shap.explainers.Exact(black_box, mask)
     shap_values = explainer(subset_foreground)[...,1].values

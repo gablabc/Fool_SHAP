@@ -107,11 +107,16 @@ def get_foreground_background(X_split, dataset, background_size=None, background
     foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]]
     #print(background.shape)
     
-    if background_size is not None:
-        mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
-        return foreground, background, mini_batch_idx
-    else:
+    # Dont return a minibatch
+    if background_size == None:
         return foreground, background
+    # Minibatch is all of background
+    if background_size == -1:
+        mini_batch_idx = np.arange(len(background)).astype(int)
+    # Minibatch is subset of background
+    else:
+        mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
+    return foreground, background, mini_batch_idx
 
 
 

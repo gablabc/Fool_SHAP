@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
-    parser.add_argument('--background_size', type=int, default=1000, help='Size of background minibatch')
+    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch')
     parser.add_argument('--min_log', type=float, default=-0.1, help='Min of log space')
     parser.add_argument('--max_log', type=float, default=1, help='Max of log space')
     parser.add_argument('--step_log', type=float, default=40, help='Number of steps in log space')
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
         # Repeat detection experiment
         for _ in range(100):
-            biased_idx = np.random.choice(args.background_size, 200, p=weights[-1]/np.sum(weights[-1]))
+            biased_idx = np.random.choice(len(mini_batch_idx), 200, p=weights[-1]/np.sum(weights[-1]))
             subset_b_pred = b_pred[mini_batch_idx[biased_idx]]
             
             # New shap values
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
 
     # Choose the right value of lambda
-    undetected_idx = np.where(detections < 5)[0]
+    undetected_idx = np.where(detections < 10)[0]
     # The hightest rank while remaining undetected
     best_attack_rank = np.max(biased_ranks[undetected_idx].mean(1))
     best_attack_idx = undetected_idx[np.argmax(biased_ranks[undetected_idx].mean(1))]
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     plt.plot(lambda_space, detections, 'b-')
     plt.fill_between(lambda_space, detections + bandDetec, detections - bandDetec,
                                                             color='b', alpha=0.2)
-    plt.plot(lambda_space, 5 * np.ones(lambda_space.shape), 'k--')
+    plt.plot(lambda_space, 10 * np.ones(lambda_space.shape), 'k--')
     plt.plot(best_lambda * np.ones(2), [0, 101], 'k--')
     plt.text(best_lambda, plt.gca().get_ylim()[0], r"$\lambda^\star$", ha='center', va='bottom')
     plt.xlim(lambda_space.min(), lambda_space.max())

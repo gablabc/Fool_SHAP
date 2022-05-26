@@ -15,3 +15,12 @@ api_examples/*
 *.jpg
 *.make
 *.html
+*.ipynb
+Makefile
+main
+*.cc
+2_Gaussians.py
+bob.py
+synthetic.py
+toy_example.py
+2D_example.py

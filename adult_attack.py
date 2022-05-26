@@ -3,7 +3,7 @@ import xgboost
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import rc
-rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif']})
+rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'], 'size':15})
 rc('text', usetex=True)
 
 import numpy as np
@@ -34,9 +34,9 @@ model.fit(X, y)
 # %%
 # The company shares b_pred, f_pred to the audit
 background = X[X["Sex"]==1]
-b_pred =  model.predict_proba(background)[:, 1]
+b_pred =  model.predict_proba(background)[:, [1]]
 foreground = X[X["Sex"]==0]
-f_pred =  model.predict_proba(foreground)[:, 1]
+f_pred =  model.predict_proba(foreground)[:, [1]]
 
 # %%
 # The audit received the provided background and foreground data 
@@ -118,7 +118,7 @@ def audit_detection(b_preds, f_preds, b_samples, f_samples, significance):
         # KS test
         for _ in range(10):
             unbiased_preds = distribution[np.random.choice(len(distribution), n_samples)]
-            _, p_val = ks_2samp(samples, unbiased_preds)
+            _, p_val = ks_2samp(samples.ravel(), unbiased_preds.ravel())
             if p_val < significance / 40:
                 return 1
 
@@ -153,13 +153,13 @@ print(f"P(False Positives) : {np.array(detections).sum()/1000}")
 weights = []
 biased_shaps = []
 detections = []
-lambd_space = np.logspace(-3, -1.5, 50)
+lambd_space = np.logspace(0, 2, 100)
 for regul_lambda in lambd_space:
     detections.append(0)
     biased_shaps.append([])
 
     # Attack !!!
-    weights.append(attack_SHAP(mask.data, -1*Phis[:, 7], regul_lambda))
+    weights.append(attack_SHAP(b_pred[subset_background_idx], -1*Phis[:, 7], regul_lambda))
     print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
 
     # Repeat the detection experiment
@@ -197,7 +197,6 @@ plt.fill_between(lambd_space, biased_shaps.mean(1)[:, s_idx] + bandSHAP[:, s_idx
 for i in not_s_idx:
     plt.fill_between(lambd_space, biased_shaps.mean(1)[:, i] + bandSHAP[:, i], 
                                   biased_shaps.mean(1)[:, i] - bandSHAP[:, i], color='b', alpha=0.2)
-plt.plot([10**-2.4, 10**-2.4], [-0.11, 0.02], "k--")
 plt.xlabel(r"$\lambda$")
 plt.xscale('log')
 plt.ylabel("Global Shapley values")
@@ -209,19 +208,18 @@ plt.plot(lambd_space, detections, 'b-')
 plt.fill_between(lambd_space, detections + bandDetec, detections - bandDetec,
                                                         color='b', alpha=0.2)
 plt.plot(lambd_space, 5 * np.ones(lambd_space.shape), 'k--')
-plt.plot([10**-2.4, 10**-2.4], [0, 100], "k--")
 plt.xlabel(r"$\lambda$")
 plt.xscale('log')
 plt.show()
 
 # %% [markdown]
-# The company sees that setting $\lambda = 10^{-2.4}$ can fool the detector
+# The company sees that setting $\lambda = 10^{0.5}$ can fool the detector
 # high probability. They run the optimization with the hyperparameter
 # to this value and send the cherry-picked background and foreground to the audit
 # %%
-optim_lambda = 10 ** -2.4
+optim_lambda = 10 ** 0.75
 # Attack !!!
-weights = attack_SHAP(background.iloc[subset_background_idx], 
+weights = attack_SHAP(b_pred[subset_background_idx],
                       -1*Phis[:, 7], optim_lambda)
 # Biased sampling
 biased_idx = np.random.choice(2000, 200, p=weights/np.sum(weights))

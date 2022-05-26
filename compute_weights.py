@@ -8,7 +8,7 @@ from scipy.stats import norm, rankdata
 import matplotlib.pyplot as plt
 import matplotlib as mp
 mp.rcParams['text.usetex'] = True
-mp.rcParams['font.size'] = 12
+mp.rcParams['font.size'] = 21
 mp.rcParams['font.family'] = 'serif'
 
 # Local imports
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch')
     parser.add_argument('--min_log', type=float, default=-0.1, help='Min of log space')
     parser.add_argument('--max_log', type=float, default=1, help='Max of log space')
-    parser.add_argument('--step_log', type=float, default=40, help='Number of steps in log space')
+    parser.add_argument('--step_log', type=int, default=40, help='Number of steps in log space')
     args = parser.parse_args()
 
     # Get the data
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     plt.ylim(biased_shaps.min(), biased_shaps.max())
     plt.xlabel(r"$\lambda$")
     plt.xscale('log')
-    plt.ylabel("Global Shapley values")
+    plt.ylabel("GSV")
     plt.legend(framealpha=1)
     plt.savefig(os.path.join(figure_path, 
                 f"shapley_curve_{tmp_filename}.pdf"), bbox_inches='tight')
@@ -204,4 +204,3 @@ if __name__ == "__main__":
     plt.ylabel(r"Detection Rate $(\%)$")
     plt.savefig(os.path.join(figure_path, 
                 f"detection_{tmp_filename}.pdf"), bbox_inches='tight')
-    

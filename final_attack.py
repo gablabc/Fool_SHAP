@@ -9,9 +9,8 @@ import pandas as pd
 from scipy.stats import rankdata
 
 import matplotlib.pyplot as plt
-import matplotlib as mp
-mp.rcParams['font.size'] = 12
-mp.rcParams['font.family'] = 'serif'
+from matplotlib import rc
+rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'], 'size':15})
 
 # Local imports
 from utils import get_data, get_foreground_background, load_model
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     # Plot results
     df = pd.DataFrame(np.column_stack((shap_values[sorted_features_idx], 
                                        biased_shap_values[sorted_features_idx])),
-                      columns=["Unbiased", "Biased"],
+                      columns=["Original", "Manipulated"],
                       index=[features[i] for i in sorted_features_idx])
     df.plot.barh()
     plt.plot([0, 0], plt.gca().get_ylim(), "k-")

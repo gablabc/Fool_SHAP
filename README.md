@@ -30,14 +30,7 @@ make
 
 ### 3. Install SHAP Fork ###
 
-This repository relies on a `hacked` version of SHAP available through
-a forked repository.
-
-```
-git clone https://github.com/gablabc/shap.git
-cd shap
-git checkout biased_sampling
-```
+This repository relies on a `hacked` version of SHAP available in supplementary
 
 Now, you must make sure that the python interpreter is able to access the
 forked SHAP repository. In Linux, this is done via the command

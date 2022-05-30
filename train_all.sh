@@ -1,8 +1,8 @@
 #!/bin/bash
 
-for dataset in {"adult_income","marketing","default_credit","compas"}
+for dataset in {"adult_income","compas"}
 do
-    for model in {"rf","gbt","mlp"}
+    for model in {"rf","mlp","xgb"}
     do
         for rseed in {0..4}
         do

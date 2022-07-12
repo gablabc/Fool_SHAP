@@ -5,10 +5,10 @@ from sklearn.datasets import dump_svmlight_file
 
 
 
-def attack_SHAP(data, coeffs, regul_lambda = 10, path='./', timeout=10.0):
+def attack_SHAP(data, coeffs, regul_lambda=10, path='./', timeout=10.0):
     while True:
-        data += 1e-5 * np.random.randn(*data.shape)
-        dump_svmlight_file(data, coeffs, f"./input.txt")
+        X = data + 1e-5 * np.random.randn(*data.shape)
+        dump_svmlight_file(X, coeffs, f"./input.txt")
         cmd = f"{path}shap_biasing/main ./input.txt {regul_lambda} > ./output.txt"
         proc = subprocess.Popen('exec ' + cmd, shell=True)
         try:
@@ -18,7 +18,6 @@ def attack_SHAP(data, coeffs, regul_lambda = 10, path='./', timeout=10.0):
             proc.kill()
             print('killed')
     res = np.loadtxt('./output.txt')
-    #print(res)
     os.remove('./input.txt' )
     os.remove('./output.txt')
     return res
@@ -46,6 +45,7 @@ def stealth_sampling(X, K, path='./', prefix='tmp', timeout=10.0):
     os.remove('./%s_input.txt' % (prefix,))
     os.remove('./%s_output.txt' % (prefix,))
     return np.array(p[:-1]) / (Y.shape[0] * sum(K))
+
 
 def stealth_sampling_bootstrap(X, K, path='./', prefix='tmp', ratio=0.3, num_sample=10, num_process=2, seed=0, timeout=10.0):
     c = 0
@@ -107,6 +107,7 @@ def stealth_sampling_bootstrap(X, K, path='./', prefix='tmp', ratio=0.3, num_sam
     q = [qq/qsum for qq in q]
     return q
 
+
 def compute_wasserstein(X1, X2, path='./', prefix='tmp', timeout=10.0):
     assert X1.shape[1] == X2.shape[1]
     while True:
@@ -119,11 +120,14 @@ def compute_wasserstein(X1, X2, path='./', prefix='tmp', timeout=10.0):
             break
         except:
             proc.kill()
+            print('killed')
+    
     d = np.loadtxt('./%s_output.txt' % (prefix,))
     os.remove('./%s_input1.txt' % (prefix,))
     os.remove('./%s_input2.txt' % (prefix,))
     os.remove('./%s_output.txt' % (prefix,))
     return d
+
 
 def compute_wasserstein_bootstrap(X1, X2, n, path='./', prefix='tmp', num_sample=10, num_process=2, seed=0, timeout=10.0):
     n1 = X1.shape[0]

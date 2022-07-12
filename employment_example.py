@@ -1,13 +1,13 @@
 # %%
-import xgboost
 import pandas as pd
+import numpy as np
+from scipy.stats import norm
 import matplotlib.pyplot as plt
 from matplotlib import rc
 rc('font',**{'size':15, 'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif']})
 rc('text', usetex=True)
 
 from sklearn.model_selection import train_test_split
-import numpy as np
 from stealth_sampling import attack_SHAP
 from utils import audit_detection
 
@@ -69,42 +69,41 @@ print(roc_auc_score(y_train, model.predict_proba(X_train)[:, 1]))
 print(roc_auc_score(y_test, model.predict_proba(X_test)[:, 1]))
 
 # %%
-
-background = X[X[:, 0]==1]
-b_pred =  model.predict_proba(background)[:, [1]]
-foreground = X[X[:, 0]==0]
-f_pred =  model.predict_proba(foreground)[:, [1]]
-print(f"Parity : {f_pred.mean() - b_pred.mean()}")
+# Define background and foreground distributions
+D_1 = X[X[:, 0]==1]
+f_D_1 =  model.predict_proba(D_1)[:, [1]]
+D_0 = X[X[:, 0]==0]
+f_D_0 =  model.predict_proba(D_0)[:, [1]]
+print(f"Parity : {f_D_0.mean() - f_D_1.mean()}")
 
 # %%
-
-subset_background_idx = np.arange(len(background))
+# Subsample the foreground uniformly at random
+S_0 = D_0[:200]
+f_S_0 = f_D_0[:200]
 
 # ## Tabular data with independent (Shapley value) masking
-mask = Independent(background, max_samples=len(background))
+mask = Independent(D_1, max_samples=len(D_1))
 # build an Exact explainer and explain the model predictions on the given dataset
 explainer = shap.explainers.Exact(model.predict_proba, mask)
-shap_values = explainer(foreground[:200])[...,1].mean(0).values
+shap_values = explainer(S_0)[...,1].mean(0).values
 
 # %%
 # Plot results
 df = pd.DataFrame(shap_values, index=features)
 df.plot.barh()
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
-plt.xlabel('Shap value')
+plt.xlabel('SHAP value')
 plt.show()
 
-# %%
-subset_foreground = foreground[:200]
-subset_f_pred = f_pred[:200]
 
 # %%
-Phis = np.stack(explainer.values_all_background).mean(0)[:, 1, :].T
-assert np.max(shap_values - Phis.mean(0)) < 1e-14
+# Assess that the Phi( f, S_0, z^(j) ) are well computed
+Phi_S_0_zj = np.stack(explainer.values_all_background).mean(0)[:, 1, :].T
+assert np.isclose(shap_values, Phi_S_0_zj.mean(0)).all()
 
 # %%
-from scipy.stats import norm
 
+# Main loop for the Attack
 weights = []
 biased_shaps = []
 detections = []
@@ -114,39 +113,40 @@ for regul_lambda in lambd_space:
     biased_shaps.append([])
 
     # Attack !!!
-    weights.append(attack_SHAP(b_pred, -1*Phis[:, 0], regul_lambda))
-    print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
+    weights = attack_SHAP(f_D_1, -Phi_S_0_zj[:, 0], regul_lambda)
+    print(f"Spasity of weights : {np.mean(weights == 0) * 100}%")
 
     # Repeat the detection experiment
     for _ in range(100):
         # Biased sampling
-        biased_idx = np.random.choice(len(background), 200, p=weights[-1]/np.sum(weights[-1]))
-        subset_b_pred = b_pred[biased_idx]
+        biased_idx = np.random.choice(len(f_D_1), 200, p=weights/np.sum(weights))
+        f_S_1 = f_D_1[biased_idx]
         
-        detections[-1] += audit_detection(b_pred, f_pred, 
-                                          subset_b_pred, subset_f_pred, 0.01)
+        detections[-1] += audit_detection(f_D_0, f_D_1, 
+                                          f_S_0, f_S_1, 0.01)
 
         # New shap values
-        biased_shaps[-1].append(np.mean(Phis[biased_idx], axis=0))
+        biased_shaps[-1].append(np.mean(Phi_S_0_zj[biased_idx], axis=0))
 
 # Convert to arrays for plots
-weights = np.array(weights)
 biased_shaps = np.array(biased_shaps)
 detections  = np.array(detections)
 
 # Confidence Intervals CLT
 bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
 # Confidence Intervals for Bernoulli variables
-bandDetec = np.sqrt(detections * (100 - detections) / 100)
+bandDetec = norm.ppf(0.995) * np.sqrt(detections * (100 - detections)) / 1000
 
 # %%
 # Curves of Shapley values
 s_idx = 0
 not_s_idx = [i for i in range(X.shape[1]) if not i == 0]
 plt.figure()
+# Plot lines
 plt.plot(lambd_space, biased_shaps.mean(1)[:, s_idx], 'r-', label="Sensitive feature")
 lines = plt.plot(lambd_space, biased_shaps.mean(1)[:, not_s_idx], 'b-', label="Other features")
 plt.setp(lines[1:], label="_") 
+# Plot Confidence Bands
 plt.fill_between(lambd_space, biased_shaps.mean(1)[:, s_idx] + bandSHAP[:, s_idx], 
                                 biased_shaps.mean(1)[:, s_idx] - bandSHAP[:, s_idx], color='r', alpha=0.2)
 for i in not_s_idx:
@@ -168,42 +168,42 @@ plt.xscale('log')
 plt.show()
 
 # %%
-optim_lambda = 5
+optim_lambda = 10**0.3
 # Attack !!!
-weights = attack_SHAP(b_pred[subset_background_idx],
-                      -1*Phis[:, 0], optim_lambda)
+weights = attack_SHAP(f_D_1, -Phi_S_0_zj[:, 0], optim_lambda)
 # Biased sampling
-biased_idx = np.random.choice(len(background), 200, p=weights/np.sum(weights))
-subset_b_pred = b_pred[subset_background_idx[biased_idx]]
+biased_idx = np.random.choice(len(f_D_1), 200, p=weights/np.sum(weights))
+S_1 = D_1[biased_idx]
+f_S_1 = f_D_1[biased_idx]
 
 # %%
+# Observe the CDFs
 hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
 plt.figure()
-plt.hist(b_pred, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
-plt.hist(subset_b_pred, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
-plt.hist(f_pred, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
-plt.hist(subset_f_pred, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
+plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
+plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
+plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
+plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
 plt.xlabel("Output")
 plt.ylabel("CDF")
 plt.legend(framealpha=1, loc="center")
 plt.savefig("Images/toy_example_detect.pdf", bbox_inches='tight')
 plt.show()
 
-detection = audit_detection(b_pred, f_pred,
-                              subset_b_pred, subset_f_pred, 0.01)
+# %%
+# Detection algorithm
+detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
 print(f"Audit Detection : {detection}")
 
 # %%
 
 # ## Tabular data with independent (Shapley value) masking
-mask = Independent(background[biased_idx], 
-                   max_samples=200)
-# build an Exact explainer and explain the model predictions on the given dataset
+mask = Independent(S_1, max_samples=200)
 explainer = shap.explainers.Exact(model.predict_proba, mask)
-biased_shap_values = explainer(foreground[:200])[...,1].mean(0).values
+biased_shap_values = explainer(S_0)[...,1].mean(0).values
 
 # %%
-
+# Final Results
 df = pd.DataFrame(np.column_stack((shap_values,
                                    biased_shap_values)),
                                    columns = ["Original", "Manipulated"],

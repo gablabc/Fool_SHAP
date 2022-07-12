@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
-    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch')
+    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument('--min_log', type=float, default=-0.1, help='Min of log space')
     parser.add_argument('--max_log', type=float, default=1, help='Max of log space')
     parser.add_argument('--step_log', type=int, default=40, help='Number of steps in log space')
@@ -37,12 +37,12 @@ if __name__ == "__main__":
                                         get_data(args.dataset, args.model, rseed=args.rseed)
 
     # Get B and F
-    foreground, background, mini_batch_idx = get_foreground_background(X_split, args.dataset,
+    D_0, D_1, mini_batch_idx = get_foreground_background(X_split, args.dataset,
                                                     args.background_size, args.background_seed)
 
     # OHE+Ordinally encode B and F
-    background = ohe_encoder.transform(ordinal_encoder.transform(background))
-    foreground = ohe_encoder.transform(ordinal_encoder.transform(foreground))
+    D_0 = ohe_encoder.transform(ordinal_encoder.transform(D_0))
+    D_1 = ohe_encoder.transform(ordinal_encoder.transform(D_1))
 
     # Permute features to match ordinal encoding
     numerical_features = ordinal_encoder.transformers_[0][2]
@@ -55,9 +55,10 @@ if __name__ == "__main__":
     model = load_model(args.model, "models", tmp_filename)
 
     # All background/foreground predictions
-    b_pred = model.predict_proba(background)[:, [1]]
-    f_pred = model.predict_proba(foreground)[:, [1]]
-    subset_f_pred = f_pred[:200]
+    f_D_0 = model.predict_proba(D_0)[:, [1]]
+    f_S_0 = f_D_0[:200]
+    f_D_1 = model.predict_proba(D_1)[:, [1]]
+    f_D_1_B = f_D_1[mini_batch_idx]
 
     # Get the sensitive feature
     print(f"Features : {features}")
@@ -73,9 +74,11 @@ if __name__ == "__main__":
 
     load = np.load(os.path.join(phis_path, tmp_filename))
     minibatch_idx = load[:, 0].astype(int)
-    Phis = load[:, 1:]
-    init_rank = rankdata(Phis.mean(0))[s_idx]
+    Phi_S_0_zj = load[:, 1:]
+    init_rank = rankdata(Phi_S_0_zj.mean(0))[s_idx]
+    init_abs_val = np.abs(Phi_S_0_zj[:, s_idx].mean())
     print(f"Rank before attack : {init_rank}")
+    print(f"Abs value before attack : {init_abs_val}")
 
 
     # Quantities to characterize the attack
@@ -84,9 +87,8 @@ if __name__ == "__main__":
     biased_ranks = []
     detections = []
 
-    # parameters
+    # Parameters
     significance = 0.01
-    n_repetitions = 200
     lambda_space = np.logspace(args.min_log, args.max_log, args.step_log)
 
 
@@ -102,23 +104,21 @@ if __name__ == "__main__":
         biased_ranks.append([])
 
         # Attack !!!
-        weights.append(attack_SHAP(b_pred[mini_batch_idx],
-                                   -1 * Phis[:, s_idx], lamb))
-        print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
-
+        weights.append(attack_SHAP(f_D_1_B, -Phi_S_0_zj[:, s_idx], lamb))
+        print(f"Sparsity of weights : {np.mean(weights[-1] == 0) * 100}%")
 
         # Repeat detection experiment
         for _ in range(100):
             biased_idx = np.random.choice(len(mini_batch_idx), 200, p=weights[-1]/np.sum(weights[-1]))
-            subset_b_pred = b_pred[mini_batch_idx[biased_idx]]
+            f_S_1 = f_D_1_B[biased_idx]
             
             # New shap values
-            shap = np.mean(Phis[biased_idx], axis=0)
+            shap = np.mean(Phi_S_0_zj[biased_idx], axis=0)
             biased_shaps[-1].append(shap)
             biased_ranks[-1].append(rankdata(shap)[s_idx])
 
-            detections[-1] += audit_detection(b_pred, f_pred, 
-                                              subset_b_pred, subset_f_pred, significance)
+            detections[-1] += audit_detection(f_D_0, f_D_1, 
+                                              f_S_0, f_S_1, significance)
 
 
 
@@ -131,18 +131,21 @@ if __name__ == "__main__":
     # Confidence Intervals CLT
     bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
     # Confidence Intervals for Bernoulli variables
-    bandDetec = np.sqrt(detections * (100 - detections) / 100)
+    bandDetec = norm.ppf(0.995) * np.sqrt(detections * (100 - detections)) / 1000
 
 
     # Choose the right value of lambda
     undetected_idx = np.where(detections < 10)[0]
-    # The hightest rank while remaining undetected
-    best_attack_rank = np.max(biased_ranks[undetected_idx].mean(1))
-    best_attack_idx = undetected_idx[np.argmax(biased_ranks[undetected_idx].mean(1))]
+    # The lowest absolute value while remaining undetected
+    abs_Phi_s = np.abs(biased_shaps[:, :, s_idx].mean(1))
+    lowest_abs_value = np.min(abs_Phi_s[undetected_idx])
+    best_attack_idx = undetected_idx[np.argmin(abs_Phi_s[undetected_idx])]
+    best_rank = biased_ranks[best_attack_idx].mean()
     best_lambda = lambda_space[best_attack_idx]
     best_weights = weights[best_attack_idx]
-    print(f"Mean Rank after attack : {best_attack_rank}")
-    success = np.round(best_attack_rank) > init_rank
+    print(f"Mean Rank after attack : {best_rank}")
+    print(f"Absolute Value after attack : {lowest_abs_value:.5f}")
+    success = np.round(best_rank) > init_rank
     print(f"Success of the attack: {success}")
     
     ############################################################################################

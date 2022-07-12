@@ -226,11 +226,11 @@ def multidim_KS(sample1, sample2, significance):
 
 
 
-def audit_detection(b_preds, f_preds, b_samples, f_samples, significance):
+def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
     # Tests conducted by the audit to see if the background and foreground provided
     # are indeed subsampled uniformly from the data.
-    for distribution, samples in zip([b_preds, f_preds],
-                                     [b_samples, f_samples]):
+    for distribution, samples in zip([f_D_0, f_D_1],
+                                     [f_S_0, f_S_1]):
         n_samples = len(samples)
         # KS test
         for _ in range(10):
@@ -249,5 +249,6 @@ def audit_detection(b_preds, f_preds, b_samples, f_samples, significance):
 
 
 if __name__ == "__main__":
-    X_split, y_split, features, ordinal_encoder, ohe_encoder = get_data("default_credit", "rf", 0)
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
+                                get_data("default_credit", "rf", 0)
     print("Done")

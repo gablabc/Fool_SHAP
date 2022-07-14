@@ -9,7 +9,7 @@ rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'],
 rc('text', usetex=True)
 
 from stealth_sampling import attack_SHAP
-from utils import audit_detection
+from utils import audit_detection, confidence_interval
 
 import sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
@@ -75,18 +75,27 @@ subset_background_idx = np.arange(2000)
 
 # Tabular data with independent (Shapley value) masking
 mask = Independent(D_1.iloc[subset_background_idx], max_samples=2000)
-explainer = shap.explainers.Exact(model.predi ct_proba, mask)
-shap_values = explainer(S_0)[...,1].mean(0).values
+explainer = shap.explainers.Exact(model.predict_proba, mask)
+explainer(S_0)
 
 # %%
-# Plot results
+# Local Shapley Values phi(f, x^(i), z^(j))
+LSV = explainer.LSV
+# Choose a subset uniformly at random (to simulate a honest result)
+honest_idx = np.random.choice(subset_background_idx, 200)
+honest_LSV = LSV[:, :, honest_idx]
+honest_shap_values = np.mean(np.mean(honest_LSV, axis=1), axis=1)
+CI = confidence_interval(honest_LSV, 0.05)
+
+# %%
+
 # Sort the features
-sorted_features_idx = np.argsort(shap_values)
+sorted_features_idx = np.argsort(honest_shap_values)
 
 # Plot results
-df = pd.DataFrame(shap_values[sorted_features_idx],
+df = pd.DataFrame(honest_shap_values[sorted_features_idx],
                   index=[X.columns[i] for i in sorted_features_idx])
-df.plot.barh()
+df.plot.barh(xerr=CI, capsize=4)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('Shap value')
 plt.show()
@@ -131,11 +140,8 @@ print(f"P(False Positives) : {np.array(detections).sum()/10} %")
 # the data. The first step of the company is to extract the 
 # $\widehat{\bm{\Phi}}(f, S_0', \bm{z}^{(j)})$ coefficients.
 # %%
-Phi_S_0_zj = np.stack(explainer.values_all_background).mean(0)[:, 1, :].T
-assert np.isclose(shap_values, Phi_S_0_zj.mean(0)).all()
 
-# %%
-
+Phi_S_0_zj = LSV.mean(1).T
 biased_shaps = []
 detections = []
 lambd_space = np.logspace(0, 2, 100)
@@ -206,7 +212,7 @@ plt.show()
 # magnitude. They run the optimization with the hyperparameter
 # to this value and send the cherry-picked background and foreground to the audit
 # %%
-optim_lambda = 10**0.5
+optim_lambda = 10**0.45
 # Attack !!!
 weights = attack_SHAP(f_D_1[subset_background_idx], -Phi_S_0_zj[:, 7], optim_lambda)
 # Biased sampling
@@ -234,7 +240,7 @@ plt.show()
 # Detection
 detection = audit_detection(f_D_0, f_D_1,
                             f_S_0, f_S_1, significance)
-print(f"Audit Detection : {detection}")
+print(f"Audit Detection : {detection==1}")
 
 # %% [markdown]
 # The audit accepts the given datasets since they look very similar to the
@@ -245,19 +251,22 @@ print(f"Audit Detection : {detection}")
 # ## Tabular data with independent (Shapley value) masking
 mask = Independent(S_1, max_samples=200)
 explainer = shap.explainers.Exact(model.predict_proba, mask)
-biased_shap_values = explainer(S_0)[...,1].mean(0).values
+explainer(S_0)[...,1]
+
+# %%
+LSV = explainer.LSV
+biased_shap_values = np.mean(np.mean(LSV, axis=1), axis=1)
+CI_b = confidence_interval(LSV, 0.01)
 
 # %%
 
-# Sort the features
-sorted_features_idx = np.argsort(shap_values)
-
-# Plot results
-df = pd.DataFrame(np.column_stack((shap_values[sorted_features_idx], 
-                                    biased_shap_values[sorted_features_idx])),
+# Plot Final results
+df = pd.DataFrame(np.column_stack((honest_shap_values[sorted_features_idx],
+                                   biased_shap_values[sorted_features_idx])),
                     columns=["Original", "Manipulated"],
                     index=[X.columns[i] for i in sorted_features_idx])
-df.plot.barh()
+df.plot.barh(xerr=np.column_stack((CI[sorted_features_idx],
+                                   CI_b[sorted_features_idx])).T, capsize=2, width=0.75)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('Shap value')
 plt.savefig("Images/adult_income/example_attack.pdf", bbox_inches='tight')

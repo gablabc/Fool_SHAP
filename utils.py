@@ -247,6 +247,14 @@ def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
     return 0
 
 
+def confidence_interval(LSV, significance):
+    assert LSV.shape[1] == LSV.shape[2]
+    M = LSV.shape[1]
+    alpha = norm.ppf(1 - significance/2)
+    sigma = np.sqrt(0.5 * (np.var(np.mean(LSV, axis=1), axis=1) + \
+                           np.var(np.mean(LSV, axis=2), axis=1)))
+    return alpha * sigma / np.sqrt(2 * M)
+
 
 if __name__ == "__main__":
     X_split, y_split, features, ordinal_encoder, ohe_encoder = \

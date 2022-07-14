@@ -60,29 +60,22 @@ if __name__ == "__main__":
         black_box = model.predict_proba
 
     # Fairness
-    demographic_parity = black_box(S_0)[:, 1].mean() - \
-                         black_box(D_1_B)[:, 1].mean()
+    # demographic_parity = black_box(S_0)[:, 1].mean() - \
+    #                      black_box(D_1_B)[:, 1].mean()
     #print(f"Demographic Parity : {demographic_parity:.3f}")
     
     # ## Tabular data with independent (Shapley value) masking
     mask = Independent(D_1_B, max_samples=len(mini_batch_idx))
     # build an Exact explainer and explain the model predictions on the given dataset
     explainer = shap.explainers.Exact(black_box, mask)
-    shap_values = explainer(S_0)[...,1].values
+    explainer(S_0)
 
-    # Shapley values should sum to the Demographic Parity
-    assert np.allclose(demographic_parity, shap_values.mean(0).sum())
-    
-    # 3d tensor with index (foreground_idx, feature_idx, background_idx)
-    phi_x_i_z = np.stack(explainer.values_all_background)[:, :, 1, :]
-
-    # Assert that we can do the attributions for
-    # each background sample separately
-    assert np.isclose(shap_values, phi_x_i_z.mean(-1)).all()
+    # Extract the LSV from the Hacked version of SHAP
+    LSV = explainer.LSV
 
     # The Phi(f, S_0', z^(j)) represents how a single background sample
-    # z^(j) will affect the Global SHAP Values Phi(f, S_0', S_1')
-    Phi_S_0_zj = phi_x_i_z.mean(0).T
+    # z^(j) will affect the GSV Phi(f, S_0', S_1')
+    Phi_S_0_zj = LSV.mean(1).T
 
     save_path = os.path.join("attacks", "Phis")
     filename = f"Phis_{args.model}_{args.dataset}_rseed_{args.rseed}_"

@@ -9,7 +9,7 @@ rc('text', usetex=True)
 
 from sklearn.model_selection import train_test_split
 from stealth_sampling import attack_SHAP
-from utils import audit_detection
+from utils import audit_detection, confidence_interval
 
 import sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
@@ -85,25 +85,29 @@ f_S_0 = f_D_0[:200]
 mask = Independent(D_1, max_samples=len(D_1))
 # build an Exact explainer and explain the model predictions on the given dataset
 explainer = shap.explainers.Exact(model.predict_proba, mask)
-shap_values = explainer(S_0)[...,1].mean(0).values
+explainer(S_0)
+
+# %%
+# Local Shapley Values phi(f, x^(i), z^(j))
+LSV = explainer.LSV
+# Choose a subset uniformly at random (to simulate a honest result)
+honest_idx = np.random.choice(len(f_D_1), 200)
+honest_LSV = LSV[:, :, honest_idx]
+honest_shap_values = np.mean(np.mean(honest_LSV, axis=1), axis=1)
+CI = confidence_interval(honest_LSV, 0.01)
 
 # %%
 # Plot results
-df = pd.DataFrame(shap_values, index=features)
-df.plot.barh()
+df = pd.DataFrame(honest_shap_values, index=features)
+df.plot.barh(xerr=CI, capsize=4)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('SHAP value')
 plt.show()
 
-
-# %%
-# Assess that the Phi( f, S_0, z^(j) ) are well computed
-Phi_S_0_zj = np.stack(explainer.values_all_background).mean(0)[:, 1, :].T
-assert np.isclose(shap_values, Phi_S_0_zj.mean(0)).all()
-
 # %%
 
 # Main loop for the Attack
+Phi_S_0_zj = LSV.mean(1).T # Phi(f, S_0', z^(j)) coeffs of the linear problem
 weights = []
 biased_shaps = []
 detections = []
@@ -173,6 +177,7 @@ optim_lambda = 10**0.3
 weights = attack_SHAP(f_D_1, -Phi_S_0_zj[:, 0], optim_lambda)
 # Biased sampling
 biased_idx = np.random.choice(len(f_D_1), 200, p=weights/np.sum(weights))
+
 S_1 = D_1[biased_idx]
 f_S_1 = f_D_1[biased_idx]
 
@@ -193,22 +198,28 @@ plt.show()
 # %%
 # Detection algorithm
 detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
-print(f"Audit Detection : {detection}")
+print(f"Audit Detection : {detection==1}")
 
 # %%
 
 # ## Tabular data with independent (Shapley value) masking
 mask = Independent(S_1, max_samples=200)
 explainer = shap.explainers.Exact(model.predict_proba, mask)
-biased_shap_values = explainer(S_0)[...,1].mean(0).values
+explainer(S_0)
+
+# %%
+
+LSV = explainer.LSV
+biased_shap_values = np.mean(np.mean(LSV, axis=1), axis=1)
+CI_b = confidence_interval(LSV, 0.01)
 
 # %%
 # Final Results
-df = pd.DataFrame(np.column_stack((shap_values,
+df = pd.DataFrame(np.column_stack((honest_shap_values,
                                    biased_shap_values)),
                                    columns = ["Original", "Manipulated"],
                                    index=features)
-df.plot.barh()
+df.plot.barh( xerr=np.column_stack((CI, CI_b)).T, capsize=4 )
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('Shap value')
 plt.savefig("Images/toy_example_attack.pdf", bbox_inches='tight')

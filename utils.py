@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import json, os
+import subprocess
 from scipy.stats import norm, ks_2samp
 
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
@@ -8,6 +9,9 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import RandomizedSearchCV
+
+from shap.explainers import Tree
+from shap.maskers import Independent
 
 # Import for Construct Defect Models (Classification)
 from sklearn.ensemble import RandomForestClassifier # Random Forests
@@ -81,13 +85,15 @@ def get_data(dataset, model_name, rseed):
 SENSITIVE_ATTR = {
     'adult_income' : 'gender',
     'compas' : 'race',
-    'default_credit' : 'SEX'
+    'default_credit' : 'SEX',
+    'marketing' : 'age'
 }
 
 PROTECTED_CLASS = {
     'adult_income' : 'Female',
     'compas' : 'African-American',
-    'default_credit' : 'Female'
+    'default_credit' : 'Female',
+    'marketing' : 'age:30-60'
 }
 
 
@@ -225,7 +231,6 @@ def multidim_KS(sample1, sample2, significance):
     return detection
 
 
-
 def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
     # Tests conducted by the audit to see if the background and foreground provided
     # are indeed subsampled uniformly from the data.
@@ -254,6 +259,62 @@ def confidence_interval(LSV, significance):
     sigma = np.sqrt(0.5 * (np.var(np.mean(LSV, axis=1), axis=1) + \
                            np.var(np.mean(LSV, axis=2), axis=1)))
     return alpha * sigma / np.sqrt(2 * M)
+
+
+def tree_shap(model, S_0, S_1, ordinal_encoder=None, ohe_encoder=None):
+    
+    # Find out which ohe columns correspond to which feature
+    if ordinal_encoder is not None and ohe_encoder is not None:
+        n_num_features = len(ordinal_encoder.transformers_[0][2])
+        categorical_to_features = list(range(n_num_features))
+        counter = n_num_features
+        for idx in range(len(ordinal_encoder.transformers_[1][2])):
+            # Associate the feature to its encoding columns
+            for _ in ordinal_encoder.transformers_[1][1].categories_[idx]:
+                categorical_to_features.append(idx + n_num_features)
+                counter = counter + 1
+
+        S_0 = ohe_encoder.transform(S_0)
+        S_1 = ohe_encoder.transform(S_1)
+    else:
+        categorical_to_features = list(range(S_0.shape[1]))
+
+    n_features = categorical_to_features[-1] + 1
+    
+    mask = Independent(S_1, max_samples=len(S_1))
+    ensemble = Tree(model, data=mask).model
+
+
+    # Save tree ensemble
+    np.savetxt("categorical_to_features.txt", categorical_to_features, fmt="%d")
+    np.savetxt("feature.txt", ensemble.features, fmt="%d")
+    np.savetxt("value.txt", ensemble.values[..., -1], fmt="%.20e")
+    np.savetxt("threshold.txt", ensemble.thresholds, fmt="%.20e")
+    np.savetxt("left.txt", ensemble.children_left, fmt="%d")
+    np.savetxt("right.txt", ensemble.children_right, fmt="%d")
+
+    # Save data
+    pd.DataFrame(S_1).to_csv("background.txt", sep=' ', index=False, header=False)
+    pd.DataFrame(S_0).to_csv("foreground.txt", sep=' ', index=False, header=False)
+
+    cmd = f"./tree_shap/main > output.txt"
+    proc = subprocess.Popen('exec ' + cmd, shell=True)
+    proc.wait()
+    LSV = np.loadtxt('output.txt')
+
+    # Clean up
+    os.remove("background.txt")
+    os.remove("foreground.txt")
+    os.remove("categorical_to_features.txt")
+    os.remove("feature.txt")
+    os.remove("value.txt")
+    os.remove("threshold.txt")
+    os.remove("left.txt")
+    os.remove("right.txt")
+    os.remove("output.txt")
+
+    return LSV.reshape((n_features, len(S_0), -1))
+
 
 
 if __name__ == "__main__":

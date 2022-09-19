@@ -1,3 +1,10 @@
+""" 
+The final part of the attack is for the company to cherry-pick S_0' with the
+non-uniform weights and provide this benchmark dataset to the audit. The audit,
+on their side, will try to detect the fraud and then run SHAP on the cherry-picked
+data. The resulting SHAP value of the sensitive attribute should be small. Results
+are stored in attacks/results.csv
+"""
 import argparse
 import glob
 import numpy as np
@@ -10,10 +17,10 @@ from scipy.stats import rankdata
 
 import matplotlib.pyplot as plt
 from matplotlib import rc
-rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'], 'size':15})
+rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'], 'size':10})
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model
+from utils import get_data, get_foreground_background, load_model, tree_shap
 from utils import audit_detection, confidence_interval, SENSITIVE_ATTR
 
 
@@ -21,8 +28,9 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='compas', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
+    parser.add_argument('--explainer', type=str, default='tree', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument("--loc", type=str, default="best", help="Location of the Legend in CDFs plot")
@@ -40,7 +48,8 @@ if __name__ == "__main__":
 
     # Ordinal encoder
     D_0 = ordinal_encoder.transform(D_0)
-    S_0 = D_0[:200]
+    M = 200
+    S_0 = D_0[:M]
     D_1 = ordinal_encoder.transform(D_1)
     
     # Permute features to match ordinal encoding
@@ -52,17 +61,25 @@ if __name__ == "__main__":
     # Load the model
     tmp_filename = f"{args.model}_{args.dataset}_{args.rseed}"
     model = load_model(args.model, "models", tmp_filename)
-    
+    print(model)
+
     # Generate a black box to explain
     if ohe_encoder is not None:
-        # Preprocessing converts to np.ndarray
-        black_box = lambda x: model.predict_proba(ohe_encoder.transform(x))
+        if args.explainer == "tree" and args.model == "xgb":
+            black_box = lambda x:model.predict(ohe_encoder.transform(x), output_margin=True)
+            f_D_0 = black_box(D_0).reshape((-1, 1))
+            f_D_1 = black_box(D_1).reshape((-1, 1))
+        else:
+            # Preprocessing converts to np.ndarray
+            black_box = lambda x: model.predict_proba(ohe_encoder.transform(x))
+            # All background/foreground predictions
+            f_D_0 = black_box(D_0)[:, [1]]
+            f_D_1 = black_box(D_1)[:, [1]]
     else:
         black_box = model.predict_proba
-    # All background/foreground predictions
-    f_D_0 = black_box(D_0)[:, [1]]
-    f_D_1 = black_box(D_1)[:, [1]]
-    f_S_0 = f_D_0[:200]
+        raise NotImplementedError("This case is not uet handled")
+
+    f_S_0 = f_D_0[:M]
 
     # Get the sensitive feature
     print(f"Features : {features}")
@@ -79,13 +96,25 @@ if __name__ == "__main__":
     demographic_parity = f_D_0.mean() - f_D_1.mean()
     print(f"Full Demographic Parity : {demographic_parity:.3f}")
 
-    # Choose the background uniformly at random
-    mask = Independent(D_1, max_samples=200)
-    explainer = shap.explainers.Exact(black_box, mask)
-    explainer(S_0)
+    if args.explainer == "exact":
+        # Choose the background uniformly at random
+        mask = Independent(D_1, max_samples=M)
+        explainer = shap.explainers.Exact(black_box, mask)
+        explainer(S_0)
 
-    # Local Shapley Values phi(f, x^(i), z^(j))
-    LSV = explainer.LSV
+        # Local Shapley Values phi(f, x^(i), z^(j))
+        LSV = explainer.LSV
+    
+    # Use our custom TreeSHAP
+    elif args.explainer == "tree":
+
+        # Subsample the background
+        S_1 = D_1[np.random.choice(N_1, M)]
+        LSV = tree_shap(model, S_0, S_1, ordinal_encoder, ohe_encoder)
+
+    else:
+        raise ValueError("Wrong type of explainer")
+
     # Choose a subset uniformly at random (to simulate a honest result)
     honest_shap_values = np.mean(np.mean(LSV, axis=1), axis=1)
     CI = confidence_interval(LSV, 0.05)
@@ -103,7 +132,7 @@ if __name__ == "__main__":
     weights = np.zeros(N_1)
     weights_path = os.path.join("attacks", "Weights")
 
-    tmp_filename = f"Weights_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    tmp_filename = f"{args.explainer}_Weights_{args.model}_{args.dataset}_rseed_{args.rseed}_"
     tmp_filename += f"B_size_{args.background_size}_seed_*.npy"
     # Only one batch
     if args.background_size == -1:
@@ -134,7 +163,7 @@ if __name__ == "__main__":
 
     # The company submits the final dataset to the audit
     # Sample Background distribution
-    biased_idx = np.random.choice(N_1, 200, p=weights/np.sum(weights))
+    biased_idx = np.random.choice(N_1, M, p=weights/np.sum(weights))
     f_S_1 = f_D_1[biased_idx]
     detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
     print(f"Detection fo the fraud : {detection == 1}")
@@ -142,11 +171,24 @@ if __name__ == "__main__":
 
     # Select the cherry-picked background
     S_1 = D_1[biased_idx]
-    maskb = Independent(S_1, max_samples=200)
-    explainer = shap.explainers.Exact(black_box, maskb)
-    explainer(S_0)
 
-    LSV = explainer.LSV
+    if args.explainer == "exact":
+        maskb = Independent(S_1, max_samples=M)
+        explainer = shap.explainers.Exact(black_box, maskb)
+        explainer(S_0)
+
+        # Local Shapley Values phi(f, x^(i), z^(j))
+        LSV = explainer.LSV
+    
+    # Use our custom TreeSHAP
+    elif args.explainer == "tree":
+        # Subsample the background
+        LSV = tree_shap(model, S_0, S_1, ordinal_encoder, ohe_encoder)
+
+    else:
+        raise ValueError("Wrong type of explainer")
+
+
     biased_shap_values = np.mean(np.mean(LSV, axis=1), axis=1)
     CI_b = confidence_interval(LSV, 0.01)
 

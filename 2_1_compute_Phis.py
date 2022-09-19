@@ -12,6 +12,7 @@ import os
 
 # Local imports
 from utils import get_data, get_foreground_background, load_model
+from utils import tree_shap
 
 
 
@@ -19,8 +20,9 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
+    parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
@@ -41,44 +43,46 @@ if __name__ == "__main__":
     # Ordinally encoder
     D_1 = ordinal_encoder.transform(D_1)
     D_0 = ordinal_encoder.transform(D_0)
-    # Permute features to match ordinal encoding
-    features = ordinal_encoder.transformers_[0][2] + ordinal_encoder.transformers_[1][2] 
 
     # Subsets of background and foreground
+    M = 200
     D_1_B = D_1[mini_batch_idx]
-    S_0 = D_0[:200]
+    S_0 = D_0[:M]
 
     # Load the model
     filename = f"{args.model}_{args.dataset}_{args.rseed}"
     model = load_model(args.model, "models", filename)
-
-    # Generate a black box to explain
-    if ohe_encoder is not None:
-        # Preprocessing converts to np.ndarray
-        black_box = lambda x: model.predict_proba(ohe_encoder.transform(x))
-    else:
-        black_box = model.predict_proba
-
-    # Fairness
-    # demographic_parity = black_box(S_0)[:, 1].mean() - \
-    #                      black_box(D_1_B)[:, 1].mean()
-    #print(f"Demographic Parity : {demographic_parity:.3f}")
     
-    # ## Tabular data with independent (Shapley value) masking
-    mask = Independent(D_1_B, max_samples=len(mini_batch_idx))
-    # build an Exact explainer and explain the model predictions on the given dataset
-    explainer = shap.explainers.Exact(black_box, mask)
-    explainer(S_0)
+    # Use Monkey-Patched implementation of SHAP
+    if args.explainer == "exact":
 
-    # Extract the LSV from the Hacked version of SHAP
-    LSV = explainer.LSV
+        # Generate a black box to explain
+        if ohe_encoder is not None:
+            # Preprocessing converts to np.ndarray
+            black_box = lambda x: model.predict_proba(ohe_encoder.transform(x))
+        else:
+            black_box = model.predict_proba
 
-    # The Phi(f, S_0', z^(j)) represents how a single background sample
-    # z^(j) will affect the GSV Phi(f, S_0', S_1')
+        mask = Independent(D_1_B, max_samples=len(mini_batch_idx))
+        explainer = shap.explainers.Exact(black_box, mask)
+        explainer(S_0)
+
+        # Extract the LSV from the Hacked version of SHAP
+        LSV = explainer.LSV
+    
+    # Use our custom TreeSHAP
+    elif args.explainer == "tree":
+
+        LSV = tree_shap(model, S_0, D_1_B, ordinal_encoder, ohe_encoder)
+    
+    else:
+        raise ValueError("Wrong type of explainer")
+
+    # Phi(f, S_0', z^(j))
     Phi_S_0_zj = LSV.mean(1).T
 
     save_path = os.path.join("attacks", "Phis")
-    filename = f"Phis_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    filename = f"{args.explainer}_Phis_{args.model}_{args.dataset}_rseed_{args.rseed}_"
     filename += f"background_size_{args.background_size}_seed_{args.background_seed}"
 
     # Save Phis locally

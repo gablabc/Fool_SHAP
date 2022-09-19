@@ -1,3 +1,4 @@
+""" Train models on the datasets with various train/test random splits """
 import argparse
 import os
 import multiprocessing
@@ -40,7 +41,6 @@ if __name__ == "__main__":
     # Prepare the K-Fold cross-validation
     cross_validator = StratifiedShuffleSplit(n_splits=args.k, random_state=42)
     # Get the hyperparameter grid (specific to each model for now)
-    # TODO have a grid for each dataset???
     hp_grid = get_hp_grid(os.path.join("models", "hyper_params", f"{args.model}_grid.json"))
     
     # Load a un-trained (uninitialized) model

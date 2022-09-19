@@ -4,15 +4,16 @@ import numpy as np
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 from matplotlib import rc
-rc('font',**{'size':15, 'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif']})
+rc('font',**{'size':16, 'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif']})
 rc('text', usetex=True)
-
-from sklearn.model_selection import train_test_split
-from stealth_sampling import attack_SHAP
-from utils import audit_detection, confidence_interval
 
 import sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
+
+from sklearn.model_selection import train_test_split
+from stealth_sampling import compute_weights, explore_attack
+from utils import audit_detection, confidence_interval
+
 import shap
 from shap.maskers import Independent
 
@@ -78,12 +79,12 @@ print(f"Parity : {f_D_0.mean() - f_D_1.mean()}")
 
 # %%
 # Subsample the foreground uniformly at random
-S_0 = D_0[:200]
-f_S_0 = f_D_0[:200]
+M = 200
+S_0 = D_0[:M]
+f_S_0 = f_D_0[:M]
 
-# ## Tabular data with independent (Shapley value) masking
+# Tabular data with independent (Shapley value) masking
 mask = Independent(D_1, max_samples=len(D_1))
-# build an Exact explainer and explain the model predictions on the given dataset
 explainer = shap.explainers.Exact(model.predict_proba, mask)
 explainer(S_0)
 
@@ -101,40 +102,16 @@ CI = confidence_interval(honest_LSV, 0.01)
 df = pd.DataFrame(honest_shap_values, index=features)
 df.plot.barh(xerr=CI, capsize=4)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
-plt.xlabel('SHAP value')
+plt.xlabel('Shapley value')
 plt.show()
 
 # %%
 
 # Main loop for the Attack
-Phi_S_0_zj = LSV.mean(1).T # Phi(f, S_0', z^(j)) coeffs of the linear problem
-weights = []
-biased_shaps = []
-detections = []
-lambd_space = np.logspace(0, 1, 20)
-for regul_lambda in lambd_space:
-    detections.append(0)
-    biased_shaps.append([])
-
-    # Attack !!!
-    weights = attack_SHAP(f_D_1, -Phi_S_0_zj[:, 0], regul_lambda)
-    print(f"Spasity of weights : {np.mean(weights == 0) * 100}%")
-
-    # Repeat the detection experiment
-    for _ in range(100):
-        # Biased sampling
-        biased_idx = np.random.choice(len(f_D_1), 200, p=weights/np.sum(weights))
-        f_S_1 = f_D_1[biased_idx]
-        
-        detections[-1] += audit_detection(f_D_0, f_D_1, 
-                                          f_S_0, f_S_1, 0.01)
-
-        # New shap values
-        biased_shaps[-1].append(np.mean(Phi_S_0_zj[biased_idx], axis=0))
-
-# Convert to arrays for plots
-biased_shaps = np.array(biased_shaps)
-detections  = np.array(detections)
+Phi_S0_zj = LSV.mean(1).T # Phi(f, S_0', z^(j)) coeffs of the linear program
+s_idx = 0
+lambd_space, _, biased_shaps, detections = \
+        explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s_idx, 0, 1, 20, 0.01)
 
 # Confidence Intervals CLT
 bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
@@ -143,7 +120,6 @@ bandDetec = norm.ppf(0.995) * np.sqrt(detections * (100 - detections)) / 1000
 
 # %%
 # Curves of Shapley values
-s_idx = 0
 not_s_idx = [i for i in range(X.shape[1]) if not i == 0]
 plt.figure()
 # Plot lines
@@ -174,9 +150,9 @@ plt.show()
 # %%
 optim_lambda = 10**0.3
 # Attack !!!
-weights = attack_SHAP(f_D_1, -Phi_S_0_zj[:, 0], optim_lambda)
+weights = compute_weights(f_D_1, Phi_S0_zj[:, 0], optim_lambda)
 # Biased sampling
-biased_idx = np.random.choice(len(f_D_1), 200, p=weights/np.sum(weights))
+biased_idx = np.random.choice(len(f_D_1), M, p=weights/np.sum(weights))
 
 S_1 = D_1[biased_idx]
 f_S_1 = f_D_1[biased_idx]
@@ -203,7 +179,7 @@ print(f"Audit Detection : {detection==1}")
 # %%
 
 # ## Tabular data with independent (Shapley value) masking
-mask = Independent(S_1, max_samples=200)
+mask = Independent(S_1, max_samples=M)
 explainer = shap.explainers.Exact(model.predict_proba, mask)
 explainer(S_0)
 

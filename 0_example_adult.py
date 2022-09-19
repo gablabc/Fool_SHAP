@@ -1,4 +1,5 @@
-# %%
+# %% 
+# Imports
 import xgboost
 import pandas as pd
 import numpy as np
@@ -8,32 +9,31 @@ from matplotlib import rc
 rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'], 'size':15})
 rc('text', usetex=True)
 
-from stealth_sampling import attack_SHAP
-from utils import audit_detection, confidence_interval
-
 import sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
 import shap
 from shap.maskers import Independent
 
+# %%
 # The company has private access to a dataset
 X,y = shap.datasets.adult()
 X.columns = ["Age", "Workclass", "EducationNum", "MaritalStatus", "Occupation",
              "Relationship", "Race", "Sex", "CapitalGain", "CapitalLoss",
              "HoursPerWeek", "Country"]
 # The company fits a model
-model = xgboost.XGBClassifier(eval_metric="error")
+model = xgboost.XGBClassifier(random_state=0, eval_metric="error")
 model.fit(X, y)
 
 # %% [markdown]
 # The audit wants to assess if the model should be
-# deployed. They demand access to the full data set and
+# deployed or not. They demand access to the full data set and
 # model used by the company. For privacy reasons, the company 
 # claims that they can only share the distributions of model
 # output for different values of the sensitive features i.e.
 # $f(D_0),f(D_1)$ with $D_0=\{\bm{x}^{(i)}:x^{(i)}_s=0\}$ and
 # $D_1=\{\bm{x}^{(i)}:x^{(i)}_s=1\}$. 
-# They are not willing to share values of other features $\bm{x}$.
+# The company is not willing to share values of other 
+# features $\bm{x}$.
 # %%
 # The company shares f(D_0), f(D_1) to the audit
 D_1 = X[X["Sex"]==1]
@@ -59,16 +59,17 @@ print(f"The demographic parity is : {parity: .3f}")
 # %% [markdown]
 # The audit decide to use SHAP to decide whether or not the
 # model explicitely uses the sensitive feature to make its predictions
-# or whether the disparity can be explained by more reasonable
+# or if the disparity can be explained by more reasonable
 # variables. To run SHAP, the audits needs two subsets 
 # $S_0\subset D_0$, and $S_1\subset D_1$ of the data.
-# The company agrees to share two subsets of size 200 each for the
+# The company agrees to share two subsets of size $M=200$ each for the
 # audit to run SHAP. Before sharing the data, the company runs SHAP 
 # locally to see what would happen.
 # %%
 # For simplicity, select S_0 uniformly at random without cheating
-S_0 = D_0.iloc[:200]
-f_S_0 = f_D_0[:200]
+M = 200
+S_0 = D_0.iloc[:M]
+f_S_0 = f_D_0[:M]
 
 # Study a large subset of background instances
 subset_background_idx = np.arange(2000)
@@ -79,10 +80,11 @@ explainer = shap.explainers.Exact(model.predict_proba, mask)
 explainer(S_0)
 
 # %%
+from utils import confidence_interval
 # Local Shapley Values phi(f, x^(i), z^(j))
 LSV = explainer.LSV
 # Choose a subset uniformly at random (to simulate a honest result)
-honest_idx = np.random.choice(subset_background_idx, 200)
+honest_idx = np.random.choice(subset_background_idx, M)
 honest_LSV = LSV[:, :, honest_idx]
 honest_shap_values = np.mean(np.mean(honest_LSV, axis=1), axis=1)
 CI = confidence_interval(honest_LSV, 0.05)
@@ -101,7 +103,7 @@ plt.xlabel('Shap value')
 plt.show()
 
 # %% [markdown]
-# Ouch! The Sex feature is the third most important to explain the disparity is
+# Ouch! The Sex feature is the fourth most important to explain the disparity is
 # outcomes between genders. This is bad because the company cannot argue that
 # the model does not explicitely uses the sex feature to make its decisions.
 # Hence, the company decides to cheat and cherry pick which 200 background 
@@ -109,7 +111,7 @@ plt.show()
 # distributions of $f(D_0),f(D_1)$, the company must ensure that
 # the cherry-picking cannot be identified using the histograms of outputs.
 #
-# The background instances will be cherry picked with the method of 
+# The background instances will be cherry-picked with the method of 
 # Laberge, Aivodji and Satoshi which will select 200 samples in a way that 
 # is hard to detect by the audit. First of, we must verify that the
 # detector used by the audit is calibrated. A calibrated detector with
@@ -121,12 +123,13 @@ plt.show()
 from utils import audit_detection
 significance = 0.01
 detections = 0
+N_1 = len(D_1)
 
 # Assess calibration
 for _ in range(1000):
     # Biased sampling
-    biased_idx = np.random.choice(len(D_1), 200)
-    f_S_1 = f_D_1[biased_idx]
+    unbiased_idx = np.random.choice(N_1, M)
+    f_S_1 = f_D_1[unbiased_idx]
     
     detections += audit_detection(f_D_0, f_D_1,
                                   f_S_0, f_S_1, significance)
@@ -140,35 +143,16 @@ print(f"P(False Positives) : {np.array(detections).sum()/10} %")
 # the data. The first step of the company is to extract the 
 # $\widehat{\bm{\Phi}}(f, S_0', \bm{z}^{(j)})$ coefficients.
 # %%
+from stealth_sampling import explore_attack
+# Get the coefficients
+Phi_S0_zj = LSV.mean(1).T
+# Sensitive index
+s_idx = 7
+# Compute the non-uniform weights for different lambda
+lambd_space, weights, biased_shaps, detections = \
+    explore_attack(f_D_0, f_S_0, f_D_1[subset_background_idx], Phi_S0_zj, s_idx, 0, 2, 100, significance)
 
-Phi_S_0_zj = LSV.mean(1).T
-biased_shaps = []
-detections = []
-lambd_space = np.logspace(0, 2, 100)
-for regul_lambda in lambd_space:
-    detections.append(0)
-    biased_shaps.append([])
-
-    # Attack !!!
-    weights = attack_SHAP(f_D_1[subset_background_idx], -Phi_S_0_zj[:, 7], regul_lambda)
-    print(f"Spasity of weights : {np.mean(weights == 0) * 100}%")
-
-    # Repeat the detection experiment
-    for _ in range(100):
-        # Biased sampling
-        biased_idx = np.random.choice(2000, 200, p=weights/np.sum(weights))
-        f_S_1 = f_D_1[subset_background_idx[biased_idx]]
-        
-        detections[-1] += audit_detection(f_D_0, f_D_1,
-                                          f_S_0, f_S_1, significance)
-
-        # New shap values
-        biased_shaps[-1].append(np.mean(Phi_S_0_zj[biased_idx], axis=0))
-
-# Convert to arrays for plots
-biased_shaps = np.array(biased_shaps)
-detections  = np.array(detections)
-
+# %%
 # Confidence Intervals CLT
 bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
 # Confidence Intervals for Bernoulli variables
@@ -176,7 +160,6 @@ bandDetec = norm.ppf(0.995) * np.sqrt(detections * (100 - detections)) / 1000
 
 # %%
 # Curves of Shapley values
-s_idx = 7
 not_s_idx = [i for i in range(X.shape[1]) if not i == 7]
 plt.figure()
 # Plot lines
@@ -185,13 +168,13 @@ lines = plt.plot(lambd_space, biased_shaps.mean(1)[:, not_s_idx], 'b-', label="O
 plt.setp(lines[1:], label="_") 
 # Plot Confidence Bands
 plt.fill_between(lambd_space, biased_shaps.mean(1)[:, s_idx] + bandSHAP[:, s_idx], 
-                                biased_shaps.mean(1)[:, s_idx] - bandSHAP[:, s_idx], color='r', alpha=0.2)
+                              biased_shaps.mean(1)[:, s_idx] - bandSHAP[:, s_idx], color='r', alpha=0.2)
 for i in not_s_idx:
     plt.fill_between(lambd_space, biased_shaps.mean(1)[:, i] + bandSHAP[:, i], 
                                   biased_shaps.mean(1)[:, i] - bandSHAP[:, i], color='b', alpha=0.2)
 plt.xlabel(r"$\lambda$")
 plt.xscale('log')
-plt.ylabel("Global Shapley values")
+plt.ylabel("Global Shapley Values")
 plt.legend(framealpha=1)
 plt.savefig("Images/adult_income/shapley_curve.pdf", bbox_inches='tight')
 
@@ -207,16 +190,17 @@ plt.savefig("Images/adult_income/detection.pdf", bbox_inches='tight')
 plt.show()
 
 # %% [markdown]
-# The company sees that setting $\lambda = 10^{0.5}$ can fool 
+# The company sees that setting $\lambda = 10^{0.45}$ can fool 
 # the detector with high probability and leads to a Shapley value of small
 # magnitude. They run the optimization with the hyperparameter
 # to this value and send the cherry-picked background and foreground to the audit
 # %%
+from stealth_sampling import compute_weights
 optim_lambda = 10**0.45
 # Attack !!!
-weights = attack_SHAP(f_D_1[subset_background_idx], -Phi_S_0_zj[:, 7], optim_lambda)
+weights = compute_weights(f_D_1[subset_background_idx], Phi_S0_zj[:, s_idx], optim_lambda)
 # Biased sampling
-biased_idx = np.random.choice(2000, 200, p=weights/np.sum(weights))
+biased_idx = np.random.choice(2000, M, p=weights/np.sum(weights))
 S_1 = D_1.iloc[subset_background_idx[biased_idx]]
 f_S_1 = f_D_1[subset_background_idx[biased_idx]]
 
@@ -249,7 +233,7 @@ print(f"Audit Detection : {detection==1}")
 # %%
 
 # ## Tabular data with independent (Shapley value) masking
-mask = Independent(S_1, max_samples=200)
+mask = Independent(S_1, max_samples=M)
 explainer = shap.explainers.Exact(model.predict_proba, mask)
 explainer(S_0)[...,1]
 
@@ -271,4 +255,8 @@ plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('Shap value')
 plt.savefig("Images/adult_income/example_attack.pdf", bbox_inches='tight')
 plt.show()
+# %% [markdown]
+# Now the sex feature is amongst the least important ones and hence
+# the high bias toward this feature has been hidden by folling SHAP.
+# This highights the danger of using SHAP to explain model fairness.
 # %%

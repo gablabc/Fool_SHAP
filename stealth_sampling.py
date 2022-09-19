@@ -1,15 +1,51 @@
 import os
 import numpy as np
 import subprocess
+from tqdm import tqdm
 from sklearn.datasets import dump_svmlight_file
+from utils import audit_detection
 
 
+def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, timeout=15.0):
+    """
+    Compute non-uniform weights for the background distribution
 
-def attack_SHAP(data, coeffs, regul_lambda=10, path='./', timeout=10.0):
+    Parameters
+    --------------------
+        f_D_1: (N_1, 1) array of predictions on D_1
+        Phi_S0_zj: (N_1,) array of Shap coefficients for sensitive attribute. 
+            If the shape is (N_1, s) with s>1 different sensitive attributes, 
+            then the weights will be computed to reduce all of Shap values.
+        regul_lambda: float that controls the trade-off between manipulation
+            and proximity to the data
+
+    Returns
+    --------------------
+        weights: (N_1, ) array of non-uniform weights on D_1
+    """
+    N_1 = len(f_D_1)
     while True:
-        X = data + 1e-5 * np.random.randn(*data.shape)
-        dump_svmlight_file(X, coeffs, f"./input.txt")
-        cmd = f"{path}shap_biasing/main ./input.txt {regul_lambda} > ./output.txt"
+        # Perturb the data a bit
+        X = f_D_1 + 1e-5 * np.random.randn(*f_D_1.shape)
+        
+        # Compute bounds on weights
+        bounds = N_1 * np.ones(N_1)
+        # More than one sensitive attribute
+        if Phi_S0_zj.ndim == 2:
+            unmanipulated_Phi = np.mean(Phi_S0_zj, 0)
+            idx = np.where( (Phi_S0_zj < unmanipulated_Phi).any(axis=1))[0]
+            bounds[idx] = 1
+            lin_coeffs = -Phi_S0_zj.mean(1)
+        # Only one sensitive attribute
+        else:
+            lin_coeffs = -Phi_S0_zj
+
+        # Store files
+        np.savetxt("bounds.txt", bounds, fmt="%d")
+        dump_svmlight_file(X, lin_coeffs, f"input.txt")
+        
+        # Run the cpp program
+        cmd = f"./shap_biasing/main input.txt bounds.txt {regul_lambda} > output.txt"
         proc = subprocess.Popen('exec ' + cmd, shell=True)
         try:
             proc.wait(timeout)
@@ -17,10 +53,108 @@ def attack_SHAP(data, coeffs, regul_lambda=10, path='./', timeout=10.0):
         except:
             proc.kill()
             print('killed')
-    res = np.loadtxt('./output.txt')
+
+    # Load results
+    weights = np.loadtxt('./output.txt')
     os.remove('./input.txt' )
+    os.remove('./bounds.txt' )
     os.remove('./output.txt')
-    return res
+    return weights
+
+
+
+def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max, lambda_steps, significance):
+    """
+    Searches the space of possible attacks
+
+    Parameters
+    --------------------
+        f_D_0: (N_0, 1) array of predictions on D_0
+        f_S_0: (M, 1) array of predictions on S_0
+        f_D_1: (N_1, 1) array of predictions on D_1
+        Phi_S0_zj: (N_1, d) array of Shap coefficients
+        s: int sentitive attribute, List(int) sensitive attributes
+
+    Returns
+    --------------------
+        lambd_space: array of all N_e lambda values explored
+        weights: (N_e, N_1) array of non-uniform weights on D_1
+        biased_shaps: (N_e, 100, d) array of Shapley values
+        detections: (N_e,) array with number of detections out of 100 runs
+    """
+    weights = []
+    biased_shaps = []
+    detections = []
+    N_1 = len(f_D_1)
+    M = len(f_S_0)
+
+    # Log-space search over possible attacls
+    lambd_space = np.logspace(lambda_min, lambda_max, lambda_steps)
+    for regul_lambda in tqdm(lambd_space):
+        detections.append(0)
+        biased_shaps.append([])
+
+        # Attack !!!
+        weights.append(compute_weights(f_D_1, Phi_S0_zj[:, s], regul_lambda))
+        print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
+
+        # Repeat the detection experiment
+        for _ in range(100):
+            # Biased sampling
+            biased_idx = np.random.choice(N_1, M, p=weights[-1]/np.sum(weights[-1]))
+            f_S_1 = f_D_1[biased_idx]
+            
+            detections[-1] += audit_detection(f_D_0, f_D_1, 
+                                              f_S_0, f_S_1, significance)
+
+            # New shap values
+            biased_shaps[-1].append(np.mean(Phi_S0_zj[biased_idx], axis=0))
+
+    # Convert to arrays for plots
+    biased_shaps = np.array(biased_shaps)
+    detections  = np.array(detections)
+    weights = np.array(weights)
+
+    return lambd_space, weights, biased_shaps, detections
+
+
+
+def attack_SHAP_bootstrap(data, coeffs, regul_lambda=10, num_sample=10, num_process=2, seed=0, timeout=10.0):
+    N = len(coeffs)
+    assert N > 500
+    c1 = 0
+    c2 = 0
+    weights = np.zeros(N)
+    for _ in range(num_sample):
+        while True:
+            c2 += 1
+            commands = []
+            for p in range(num_process):
+                prefix_p = f"{p:d}"
+                np.random.seed(seed + c1)
+                idx = np.random.permutation(N)[:500]
+                np.random.seed(seed + c2)
+                X = data[idx] + 1e-5 * np.random.randn(500)
+                dump_svmlight_file(X, coeffs, f"./{prefix_p}_input.txt")
+                cmd = f"./shap_biasing/main ./{prefix_p}_input.txt {regul_lambda} > ./{prefix_p}_output.txt"
+                commands.append(cmd)
+            procs = [subprocess.Popen('exec ' + cmd, shell=True) for cmd in commands]
+            try:
+                for p in procs:
+                    p.wait(timeout)
+                c1 += 1
+                break
+            except:
+                for p in procs:
+                    p.kill()
+                print('killed')
+        for p in range(num_process):
+            prefix_p = f"{p:d}"
+            dW = np.loadtxt(f"./{prefix_p}_output.txt")
+            weights += dW
+            os.remove(f"./{prefix_p}_input1.txt")
+            os.remove(f"./{prefix_p}_output.txt")
+    return weights
 
 
 

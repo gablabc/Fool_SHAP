@@ -28,7 +28,7 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--explainer', type=str, default='tree', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
@@ -47,15 +47,14 @@ if __name__ == "__main__":
     N_1 = D_1.shape[0]
 
     # Ordinal encoder
-    D_0 = ordinal_encoder.transform(D_0)
-    M = 200
-    S_0 = D_0[:M]
-    D_1 = ordinal_encoder.transform(D_1)
+    if ordinal_encoder is not None:
+        D_0 = ordinal_encoder.transform(D_0)
+        D_1 = ordinal_encoder.transform(D_1)
+        # Permute features to match ordinal encoding
+        numerical_features = ordinal_encoder.transformers_[0][2]
+        categorical_features = ordinal_encoder.transformers_[1][2] 
+        features = numerical_features + categorical_features
     
-    # Permute features to match ordinal encoding
-    numerical_features = ordinal_encoder.transformers_[0][2]
-    categorical_features = ordinal_encoder.transformers_[1][2] 
-    features = numerical_features + categorical_features
     n_features = len(features)
 
     # Load the model
@@ -79,6 +78,11 @@ if __name__ == "__main__":
         black_box = model.predict_proba
         raise NotImplementedError("This case is not uet handled")
 
+    if ordinal_encoder is None:
+        D_0 = D_0.to_numpy()
+        D_1 = D_1.to_numpy()
+    M = 200
+    S_0 = D_0[:M]
     f_S_0 = f_D_0[:M]
 
     # Get the sensitive feature
@@ -170,6 +174,7 @@ if __name__ == "__main__":
 
 
     # Select the cherry-picked background
+    print(len(np.unique(biased_idx)))
     S_1 = D_1[biased_idx]
 
     if args.explainer == "exact":
@@ -238,8 +243,10 @@ if __name__ == "__main__":
                                        biased_shap_values[sorted_features_idx])),
                       columns=["Original", "Manipulated"],
                       index=[features[i] for i in sorted_features_idx])
-    df.plot.barh(xerr=np.column_stack((CI[sorted_features_idx],
-                                       CI_b[sorted_features_idx])).T, 
+    if df.shape[0] > 22:
+        df = df.iloc[:22]
+    df.plot.barh(xerr=np.column_stack((CI[sorted_features_idx[:22]],
+                                       CI_b[sorted_features_idx[:22]])).T, 
                  capsize=2, width=0.75)
     plt.plot([0, 0], plt.gca().get_ylim(), "k-")
     plt.xlabel('Shap value')

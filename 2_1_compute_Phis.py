@@ -20,9 +20,9 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
-    parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
+    parser.add_argument('--explainer', type=str, default='tree', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
@@ -41,8 +41,12 @@ if __name__ == "__main__":
     #print(mini_batch_idx)
 
     # Ordinally encoder
-    D_1 = ordinal_encoder.transform(D_1)
-    D_0 = ordinal_encoder.transform(D_0)
+    if ordinal_encoder is not None:
+        D_1 = ordinal_encoder.transform(D_1)
+        D_0 = ordinal_encoder.transform(D_0)
+    else:
+        D_1 = D_1.to_numpy()
+        D_0 = D_0.to_numpy()
 
     # Subsets of background and foreground
     M = 200

@@ -40,6 +40,9 @@ def get_encoders(df_X, model_name):
         n_num = len(num_cols)
         num_cols = list(range(n_num))
         cat_cols = [i + n_num for i in range(len(cat_cols))]
+    else:
+        ordinal_encoder = None
+        X = df_X
 
     # Some models require rescaling numerical features
     if model_name == "mlp":
@@ -76,8 +79,8 @@ def get_data(dataset, model_name, rseed):
     ordinal_encoder, ohe_encoder = get_encoders(X, model_name)
     
     # Splits
-    X_split = {key : X.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test", "explain"]}
-    y_split = {key : y.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test", "explain"]}
+    X_split = {key : X.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test"]}
+    y_split = {key : y.iloc[split_dict[key]].reset_index(drop=True) for key in ["train", "test"]}
     
     return X_split, y_split, features, ordinal_encoder, ohe_encoder
 
@@ -86,14 +89,16 @@ SENSITIVE_ATTR = {
     'adult_income' : 'gender',
     'compas' : 'race',
     'default_credit' : 'SEX',
-    'marketing' : 'age'
+    'marketing' : 'age',
+    'communities': 'PctWhite>90'
 }
 
 PROTECTED_CLASS = {
     'adult_income' : 'Female',
     'compas' : 'African-American',
     'default_credit' : 'Female',
-    'marketing' : 'age:30-60'
+    'marketing' : 'age:30-60',
+    'communities': 0
 }
 
 
@@ -103,14 +108,13 @@ def get_foreground_background(X_split, dataset, background_size=None, background
     on the sensitive attribute
     """
     # Training set is the first index
-    df_train = X_split["train"]
-    df_test  = X_split["test"]
+    X = pd.concat([X_split["train"], X_split["test"]])
 
     if background_seed is not None:
         np.random.seed(background_seed)
     # Subsample a portion of the Background
-    background = df_train.loc[df_train[SENSITIVE_ATTR[dataset]] != PROTECTED_CLASS[dataset]]
-    foreground = df_test.loc[df_test[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]]
+    background = X.loc[X[SENSITIVE_ATTR[dataset]] != PROTECTED_CLASS[dataset]]
+    foreground = X.loc[X[SENSITIVE_ATTR[dataset]] == PROTECTED_CLASS[dataset]]
     #print(background.shape)
     
     # Dont return a minibatch
@@ -253,7 +257,7 @@ def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
 
 
 def confidence_interval(LSV, significance):
-    assert LSV.shape[1] == LSV.shape[2]
+    #assert LSV.shape[1] == LSV.shape[2]
     M = LSV.shape[1]
     alpha = norm.ppf(1 - significance/2)
     sigma = np.sqrt(0.5 * (np.var(np.mean(LSV, axis=1), axis=1) + \

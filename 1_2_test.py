@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='compas', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     args = parser.parse_args()
@@ -33,8 +33,9 @@ if __name__ == "__main__":
     y = y_split["test"]
 
     # Process the data
-    X = ordinal_encoder.transform(X)
-    y = y.to_numpy()
+    if ordinal_encoder is not None:
+        X = ordinal_encoder.transform(X)
+        y = y.to_numpy()
     # Some model may perhaps not require OHE
     if ohe_encoder is not None:
         X = ohe_encoder.transform(X)
@@ -54,8 +55,10 @@ if __name__ == "__main__":
     foreground, background = get_foreground_background(X_split, args.dataset)
 
     # Ordinally encode B and F
-    background = ordinal_encoder.transform(background)
-    foreground = ordinal_encoder.transform(foreground)
+    if ordinal_encoder is not None:
+        background = ordinal_encoder.transform(background)
+        foreground = ordinal_encoder.transform(foreground)
+    
     if ohe_encoder is not None:
         background = ohe_encoder.transform(background)
         foreground = ohe_encoder.transform(foreground)

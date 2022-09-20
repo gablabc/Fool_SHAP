@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--k', type=int, default=5, help='Number of splits in cross-validation')
@@ -32,8 +32,10 @@ if __name__ == "__main__":
     y = y_split["train"]
 
     # Process the data
-    X = ordinal_encoder.transform(X)
     y = y.to_numpy()
+    if ordinal_encoder is not None:
+        X = ordinal_encoder.transform(X)
+    
     # Some model may perhaps not require OHE
     if ohe_encoder is not None:
         X = ohe_encoder.transform(X)

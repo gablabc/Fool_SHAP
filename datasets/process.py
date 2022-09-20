@@ -130,6 +130,55 @@ def get_compas(save_df=False):
 
 
 
+def get_communities():
+    """"
+    Taken from https://github.com/dylan-slack/Fooling-LIME-SHAP
+    Handle processing of Communities and Crime.  We exclude rows with missing values and predict
+    if the violent crime is in the 50th percentile.
+
+    Parameters
+    ----------
+    params : Params
+
+    Returns:
+    ----------
+    Pandas data frame X of processed data, np.ndarray y, and list of column names
+    """
+
+    dataset = 'communities'
+    df = pd.read_csv('./raw_datasets/communities/c&c.csv', index_col=0)
+    # Rename the columns
+    df.columns = [x.split(" ")[0] for x in df.columns]
+
+    # Considre racePctWhite > 95 as sensitive attribute
+    df.insert(loc=0, column='PctWhite>90', value=(df['racePctWhite'] > 90).astype(int))
+    df = df.drop(['racepctblack', 'racePctAsian', 'racePctWhite', 'racePctAsian'], axis=1)
+
+    # Remove missing targets
+    y_col = "ViolentCrimesPerPop"
+    df = df[df[y_col] != "?"]
+    df[y_col] = df[y_col].values.astype('float32')
+
+    # Just dump all x's that have missing values 
+    cols_with_missing_values = []
+    for col in df:
+        if len(np.where(df[col].values == '?')[0]) >= 1:
+            cols_with_missing_values.append(col)    
+    df = df.drop(cols_with_missing_values + ['communityname', 'fold', 'county', 'community', 'state'], axis=1)
+
+
+    # Everything over 50th percentile gets negative outcome (lots of crime is bad)
+    high_violent_crimes_threshold = 50
+    y_col = "ViolentCrimesPerPop"
+    y = df[y_col]
+    y_cutoff = np.percentile(y, high_violent_crimes_threshold)
+    df[y_col] = [1 if val < y_cutoff else 0 for val in df[y_col]]
+    df.rename({"ViolentCrimesPerPop": 'LowCrime'}, axis=1, inplace=True)
+    
+    save(df, dataset)
+
+
+
 def save(df, dataset):
     df = shuffle(df, random_state=99)
     full_name = os.path.join("preprocessed", f"{dataset}.csv")
@@ -137,12 +186,9 @@ def save(df, dataset):
     df.to_csv(full_name, index=False)
     # Save the idxs of train/test for 5 splits
     for s in range(5):
-        train_idx, test_idx = train_test_split(list(range(len(df))), test_size=0.33, 
+        train_idx, test_idx = train_test_split(list(range(len(df))), test_size=0.2,
                                                             random_state=s, stratify=df.iloc[:, -1])
-        test_idx, explain_idx = train_test_split(test_idx, test_size=0.5, random_state=s, 
-                                                            stratify=df.iloc[test_idx, -1])
-
-        json.dump({"train" : train_idx, "test" : test_idx, "explain" : explain_idx},
+        json.dump({"train" : train_idx, "test" : test_idx},
                    open(os.path.join("preprocessed", f"{dataset}_split_rseed_{s}.json"), "w"))
 
 
@@ -151,5 +197,6 @@ DATA_PROCESS = {
     'adult_income' : get_adult_income,
     'default_credit' : get_default_credit,
     'marketing' : get_marketing,
-    'compas' : get_compas
+    'compas' : get_compas,
+    'communities' : get_communities
 }

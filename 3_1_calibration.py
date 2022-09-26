@@ -30,9 +30,14 @@ if __name__ == "__main__":
         D_0, D_1 = get_foreground_background(X_split, args.dataset)
         
         # Ordinally encode B and F
-        D_0 = ohe_encoder.transform(ordinal_encoder.transform(D_0))
-        D_1 = ohe_encoder.transform(ordinal_encoder.transform(D_1))
-
+        if ordinal_encoder is not None:
+            D_0 = ordinal_encoder.transform(D_0)
+            D_1 = ordinal_encoder.transform(D_1)
+    
+        if ohe_encoder is not None:
+            D_0 = ohe_encoder.transform(D_0)
+            D_1 = ohe_encoder.transform(D_1)
+        
         # Load the model
         tmp_filename = f"{args.model}_{args.dataset}_{rseed}"
         model = load_model(args.model, "models", tmp_filename)
@@ -48,4 +53,4 @@ if __name__ == "__main__":
             
             false_positive_rates += audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
     false_positive_rates /= 5000
-    print(false_positive_rates)
+    print(100 * false_positive_rates)

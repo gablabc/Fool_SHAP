@@ -135,7 +135,7 @@ def get_foreground_background(X_split, dataset, background_size=None, background
 
 
 MODELS = { 
-    'mlp' : MLPClassifier(random_state=1234, max_iter=500),
+    'mlp' : MLPClassifier(random_state=1234, max_iter=500, early_stopping=True),
     'rf' : RandomForestClassifier(random_state=1234, n_jobs=-1),
     'gbt' : GradientBoostingClassifier(random_state=1234),
     'xgb' : xgb.XGBClassifier(random_state=1234, eval_metric='error', use_label_encoder=False)
@@ -205,7 +205,6 @@ def get_best_cv_scores(search, k):
 def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jobs):
     # Try out default HP
     best_cv_scores = cross_val_score(estimator, X, y, cv=cross_validator, scoring='roc_auc')
-    model = estimator.fit(X, y)
     print("bob")
 
     # Try out Random Search
@@ -219,6 +218,7 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jo
         model = hp_search.best_estimator_
     else:
         print("Use default values")
+        model = estimator.fit(X, y)
     return model, best_cv_scores
 
 

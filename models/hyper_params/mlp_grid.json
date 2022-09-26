@@ -1,6 +1,5 @@
 {
     "hidden_layer_sizes": "eval_[(100,), (200,), (50,), (20,10), (50,20), (100,50)]",
-    "early_stopping": "eval_[False, True]",
-    "learning_rate_init": [0.0001, 0.001, 0.01],
+    "learning_rate_init": [0.001, 0.005, 0.01],
     "alpha":"eval_np.logspace(-7, -1, 13)"
 }

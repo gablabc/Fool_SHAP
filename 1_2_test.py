@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='compas', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     args = parser.parse_args()
@@ -52,20 +52,20 @@ if __name__ == "__main__":
     ############## Demographic Parity ##############
 
     # Get B and F
-    foreground, background = get_foreground_background(X_split, args.dataset)
+    D_0, D_1 = get_foreground_background(X_split, args.dataset)
 
     # Ordinally encode B and F
     if ordinal_encoder is not None:
-        background = ordinal_encoder.transform(background)
-        foreground = ordinal_encoder.transform(foreground)
+        D_0 = ordinal_encoder.transform(D_0)
+        D_1 = ordinal_encoder.transform(D_1)
     
     if ohe_encoder is not None:
-        background = ohe_encoder.transform(background)
-        foreground = ohe_encoder.transform(foreground)
+        D_0 = ohe_encoder.transform(D_0)
+        D_1 = ohe_encoder.transform(D_1)
 
     # Fairness
-    demographic_parity = model.predict_proba(foreground)[:, 1].mean() - \
-                         model.predict_proba(background)[:, 1].mean()
+    demographic_parity = model.predict_proba(D_0)[:, 1].mean() - \
+                         model.predict_proba(D_1)[:, 1].mean()
 
 
     ############## Save Results ##############

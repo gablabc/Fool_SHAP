@@ -25,15 +25,15 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
-    parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
+    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--model', type=str, default='xgb', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--explainer', type=str, default='tree', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
-    parser.add_argument('--min_log', type=float, default=2, help='Min of log space')
+    parser.add_argument('--min_log', type=float, default=2.5, help='Min of log space')
     parser.add_argument('--max_log', type=float, default=5, help='Max of log space')
-    parser.add_argument('--step_log', type=int, default=40, help='Number of steps in log space')
+    parser.add_argument('--step_log', type=int, default=20, help='Number of steps in log space')
     args = parser.parse_args()
 
     # Get the data
@@ -97,6 +97,10 @@ if __name__ == "__main__":
     print(f"Abs value before attack : {init_abs_val}")
 
 
+    ############################################################################################
+    #                                       Experiment                                         #
+    ############################################################################################
+
     significance = 0.01
     lambd_space, weights, biased_shaps, detections = \
                 explore_attack(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, 
@@ -120,52 +124,6 @@ if __name__ == "__main__":
     success = lowest_abs_value < init_abs_val
     print(f"Reduction factor: {(init_abs_val - lowest_abs_value) / init_abs_val:.2f}")
     print(f"Success of the attack: {success}")
-
-    # # Quantities to characterize the attack
-    # weights = []
-    # biased_shaps = []
-    # biased_ranks = []
-    # detections = []
-
-    # # Parameters
-    # significance = 0.01
-    # lambda_space = np.logspace(args.min_log, args.max_log, args.step_log)
-
-
-    ############################################################################################
-    #                                       Experiment                                         #
-    ############################################################################################
-
-
-    # # Main experiment
-    # for lamb in tqdm(lambda_space):
-    #     detections.append(0)
-    #     biased_shaps.append([])
-    #     biased_ranks.append([])
-
-    #     weights.append(attack_SHAP(f_D_1_B, -Phi_S_0_zj[:, s_idx], lamb))
-    #     print(f"Sparsity of weights : {np.mean(weights[-1] == 0) * 100}%")
-
-    #     # Repeat detection experiment
-    #     for _ in range(100):
-    #         biased_idx = np.random.choice(len(mini_batch_idx), 200, p=weights[-1]/np.sum(weights[-1]))
-    #         f_S_1 = f_D_1_B[biased_idx]
-            
-    #         # New shap values
-    #         shap = np.mean(Phi_S_0_zj[biased_idx], axis=0)
-    #         biased_shaps[-1].append(shap)
-    #         biased_ranks[-1].append(rankdata(shap)[s_idx])
-
-    #         detections[-1] += audit_detection(f_D_0, f_D_1, 
-    #                                           f_S_0, f_S_1, significance)
-
-
-
-    # # Convert to arrays for plots
-    # weights = np.array(weights)
-    # biased_shaps = np.array(biased_shaps)
-    # biased_ranks = np.array(biased_ranks)
-    # detections  = np.array(detections)
     
     ############################################################################################
     #                                     Save Results                                         #

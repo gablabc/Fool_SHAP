@@ -46,7 +46,7 @@ assert np.isclose(gap, np.sum(np.mean(np.mean(LSV, axis=1), axis=1)))
 # Efficient treeSHAP extraction of LSV for x_s
 tree_LSV = tree_shap(model, S_0, S_1) # (n_features, |S_0|, |S_1|)
 
-# Does our TreeSHAP implementation conicide with ExactSHAP
+# Does our TreeSHAP implementation coincide with ExactSHAP
 assert np.isclose(tree_LSV , LSV).all()
 
 # %%

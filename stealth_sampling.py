@@ -6,7 +6,7 @@ from sklearn.datasets import dump_svmlight_file
 from utils import audit_detection
 
 
-def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, timeout=15.0):
+def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.0):
     """
     Compute non-uniform weights for the background distribution
 
@@ -32,10 +32,12 @@ def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, timeout=15.0):
         bounds = N_1 * np.ones(N_1)
         # More than one sensitive attribute
         if Phi_S0_zj.ndim == 2:
-            unmanipulated_Phi = np.mean(Phi_S0_zj, 0)
-            idx = np.where( (Phi_S0_zj < unmanipulated_Phi).any(axis=1))[0]
-            bounds[idx] = 1
             lin_coeffs = -Phi_S0_zj.mean(1)
+            if epsilon is not None:
+                unmanipulated_Phi = np.mean(Phi_S0_zj, 0)
+                assert epsilon >= 0 and epsilon < N_1
+                J = np.where( (Phi_S0_zj < unmanipulated_Phi).any(axis=1))[0]
+                bounds[J] = epsilon
         # Only one sensitive attribute
         else:
             lin_coeffs = -Phi_S0_zj
@@ -63,7 +65,8 @@ def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, timeout=15.0):
 
 
 
-def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max, lambda_steps, significance):
+def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max, 
+                                        lambda_steps, significance, epsilon=None):
     """
     Searches the space of possible attacks
 
@@ -95,7 +98,7 @@ def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max, la
         biased_shaps.append([])
 
         # Attack !!!
-        weights.append(compute_weights(f_D_1, Phi_S0_zj[:, s], regul_lambda))
+        weights.append(compute_weights(f_D_1, Phi_S0_zj[:, s], regul_lambda, epsilon=epsilon))
         print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
 
         # Repeat the detection experiment

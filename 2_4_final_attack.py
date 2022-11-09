@@ -28,9 +28,9 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='compas', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
-    parser.add_argument('--explainer', type=str, default='tree', help='exact or tree')
+    parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument("--loc", type=str, default="best", help="Location of the Legend in CDFs plot")
@@ -76,7 +76,7 @@ if __name__ == "__main__":
             f_D_1 = black_box(D_1)[:, [1]]
     else:
         black_box = model.predict_proba
-        raise NotImplementedError("This case is not uet handled")
+        raise NotImplementedError("This case is not yet handled")
 
     if ordinal_encoder is None:
         D_0 = D_0.to_numpy()
@@ -129,8 +129,46 @@ if __name__ == "__main__":
     print(f"Abs value before attack : {init_abs}")
     print(f"Subsampled Demographic Parity : {honest_shap_values.sum():.3f}\n")
     
+
+
     ############################################################################################
-    #                                          Biased                                          #
+    #                                      Brute-Force                                         #
+    ############################################################################################
+    # Load the Weights
+    brute_path = os.path.join("attacks", "Brute")
+    tmp_filename = f"{args.explainer}_Brute_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    tmp_filename += f"B_size_{args.background_size}_seed_0.npy"
+    S_1_idx = load = np.load(os.path.join(brute_path, tmp_filename))
+    f_S_1 = f_D_1[S_1_idx]
+    S_1 = D_1[S_1_idx]
+
+    if args.explainer == "exact":
+        maskb = Independent(S_1, max_samples=M)
+        explainer = shap.explainers.Exact(black_box, maskb)
+        explainer(S_0)
+
+        # Local Shapley Values phi(f, x^(i), z^(j))
+        LSV = explainer.LSV
+    
+    # Use our custom TreeSHAP
+    elif args.explainer == "tree":
+        # Subsample the background
+        LSV = tree_shap(model, S_0, S_1, ordinal_encoder, ohe_encoder)
+
+    else:
+        raise ValueError("Wrong type of explainer")
+
+
+    biased_shap_values = np.mean(np.mean(LSV, axis=1), axis=1)
+    brute_rank = rankdata(biased_shap_values)[s_idx]
+    brute_abs = np.abs(biased_shap_values[s_idx])
+    print(f"Rank after brute attack : {brute_rank}")
+    print(f"Abs value before brute attack : {brute_abs}")
+
+
+
+    ############################################################################################
+    #                                       Fool SHAP                                          #
     ############################################################################################
     # Load the Weights
     weights = np.zeros(N_1)
@@ -210,12 +248,12 @@ if __name__ == "__main__":
         # Make the file if it does not exist
         if not os.path.exists(results_file):
             with open(results_file, 'w') as file:
-                file.write("dataset,model,rseed,detection,init_rank,final_rank,init_abs,final_abs\n")
+                file.write("dataset,model,rseed,detection,init_rank,brute_rank,final_rank,init_abs,brute_abs,final_abs\n")
         # Append new results to the file
         with open(results_file, 'a') as file:
             file.write(f"{args.dataset},{args.model},{args.rseed},")
-            file.write(f"{detection==1},{int(init_rank):d},{int(final_rank):d},")
-            file.write(f"{init_abs:.6f},{final_abs:.6f}\n")
+            file.write(f"{detection==1},{int(init_rank):d},{int(brute_rank):d},{int(final_rank):d},")
+            file.write(f"{init_abs:.6f},{brute_abs:.6f},{final_abs:.6f}\n")
 
 
     # Where to save figure

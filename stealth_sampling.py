@@ -4,6 +4,7 @@ import subprocess
 from tqdm import tqdm
 from sklearn.datasets import dump_svmlight_file
 from utils import audit_detection
+import time
 
 
 def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.0):
@@ -119,6 +120,52 @@ def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max,
     weights = np.array(weights)
 
     return lambd_space, weights, biased_shaps, detections
+
+
+
+def brute_force(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, significance, time_limit):
+    """
+    Searches the space of possible attacks via brute-force
+
+    Parameters
+    --------------------
+        f_D_0: (N_0, 1) array of predictions on D_0
+        f_S_0: (M, 1) array of predictions on S_0
+        f_D_1: (N_1, 1) array of predictions on D_1
+        Phi_S0_zj: (N_1, d) array of Shap coefficients
+        s: int sentitive attribute, List(int) sensitive attributes
+        time_limit: float time limit of the search in seconds
+
+    Returns
+    --------------------
+        S_1: (M,) indices of instances in S_1'
+    """
+    
+    N_1 = len(f_D_1)
+    M = len(f_S_0)
+    idx = np.arange(N_1)
+    S_1 = np.random.choice(idx, M)
+    min_abs_Phi_s = np.abs(Phi_S0_zj[S_1, s].mean())
+    print(f"Init |Phi_s(f, S_0, S_1)| = {min_abs_Phi_s}")
+
+    # Only search for a limited time
+    start = time.time()
+    step = 1
+    while time.time() - start < time_limit:
+        
+        S_1_candidate = np.random.choice(idx, M)
+        abs_Phi_s = np.abs(Phi_S0_zj[S_1_candidate, s].mean())
+        f_S_1 = f_D_1[S_1_candidate]
+        detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance)
+
+        if abs_Phi_s < min_abs_Phi_s and not detection:
+            S_1 = S_1_candidate
+            min_abs_Phi_s = abs_Phi_s
+        step +=1
+
+    print(f"Searched for {step} steps")
+    print(f"Smallest |Phi_s(f, S_0, S_1)| = {min_abs_Phi_s}")
+    return S_1
 
 
 

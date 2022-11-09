@@ -9,6 +9,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+import time
 
 import matplotlib.pyplot as plt
 import matplotlib as mp
@@ -102,9 +103,12 @@ if __name__ == "__main__":
     ############################################################################################
 
     significance = 0.01
+    start = time.time()
     lambd_space, weights, biased_shaps, detections = \
                 explore_attack(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, 
                                args.min_log, args.max_log, args.step_log, significance)
+    elapsed_time = time.time() - start
+    print(elapsed_time)
 
     # Confidence Intervals CLT
     bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
@@ -135,9 +139,14 @@ if __name__ == "__main__":
         weights_path = os.path.join("attacks", "Weights")
         tmp_filename = f"{args.explainer}_Weights_{args.model}_{args.dataset}_rseed_{args.rseed}_"
         tmp_filename += f"B_size_{args.background_size}_seed_{args.background_seed}"
-        #print(best_weights.shape)
-        #print(mini_batch_idx.shape)
-        np.save(os.path.join(weights_path, tmp_filename), np.column_stack((mini_batch_idx, best_weights)) )
+        
+        # Save the optimal weights
+        # np.save(os.path.join(weights_path, tmp_filename), np.column_stack((mini_batch_idx, best_weights)) )
+        
+    # Save the elapse time to cmpute the attack
+    with open(os.path.join(weights_path, tmp_filename + ".txt"), "w") as file:
+        file.write(str(elapsed_time))
+
 
     # Where to save figures
     figure_path = os.path.join(f"Images/{args.dataset}/{args.model}/")

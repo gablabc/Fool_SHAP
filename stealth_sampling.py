@@ -164,7 +164,7 @@ def brute_force(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, significance, time_limit):
         step +=1
 
     print(f"Searched for {step} steps")
-    print(f"Smallest |Phi_s(f, S_0, S_1)| = {min_abs_Phi_s}")
+    print(f"Smallest |Phi_s(f, S_0, S_1)| = {min_abs_Phi_s}\n")
     return S_1
 
 

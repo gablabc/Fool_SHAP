@@ -29,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
     parser.add_argument('--background_size', type=int, default=2000, help='Size of background minibatch, -1 means all')
+    parser.add_argument('--time_multiplier', type=int, default=1, help='How much longer than computing the weights')
     args = parser.parse_args()
 
     # Get the data
@@ -73,11 +74,7 @@ if __name__ == "__main__":
         f_D_1_B = f_D_1[mini_batch_idx]
 
     # Get the sensitive feature
-    print(f"Features : {features}")
-    print(f"Sensitive attribute : {SENSITIVE_ATTR[args.dataset]}")
     s_idx = features.index(SENSITIVE_ATTR[args.dataset])
-    not_s_idx = [i for i in range(n_features) if not i==s_idx]
-    print(f"Index of sensitive feature : {s_idx}")
 
     # Load the Phis
     phis_path = os.path.join("attacks", "Phis")
@@ -101,7 +98,7 @@ if __name__ == "__main__":
         time_limit = float(file.read())
 
     significance = 0.01
-    S_1_p_idx = brute_force(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, significance, time_limit)
+    S_1_p_idx = brute_force(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, significance, args.time_multiplier * time_limit)
     S_1_p_idx = mini_batch_idx[S_1_p_idx]
 
     ############################################################################################
@@ -111,7 +108,7 @@ if __name__ == "__main__":
 
     # Save the weights if success
     brute_path = os.path.join("attacks", "Brute")
-    tmp_filename = f"{args.explainer}_Brute_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    tmp_filename = f"{args.explainer}_Brute_{args.time_multiplier}_{args.model}_{args.dataset}_rseed_{args.rseed}_"
     tmp_filename += f"B_size_{args.background_size}_seed_{args.background_seed}"
     
     # Save the optimal weights

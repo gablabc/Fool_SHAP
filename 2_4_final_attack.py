@@ -28,11 +28,11 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='compas', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
-    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
+    parser.add_argument('--background_size', type=int, default=1000, help='Size of background minibatch, -1 means all')
     parser.add_argument("--loc", type=str, default="best", help="Location of the Legend in CDFs plot")
     parser.add_argument("--save", action='store_true', help="Save results in csv")
     args = parser.parse_args()
@@ -86,11 +86,8 @@ if __name__ == "__main__":
     f_S_0 = f_D_0[:M]
 
     # Get the sensitive feature
-    print(f"Features : {features}")
-    print(f"Sensitive attribute : {SENSITIVE_ATTR[args.dataset]}")
     s_idx = features.index(SENSITIVE_ATTR[args.dataset])
     not_s_idx = [i for i in range(n_features) if not i==s_idx]
-    print(f"Index of sensitive feature : {s_idx}")
     
     ############################################################################################
     #                                         Unbiased                                         #
@@ -136,7 +133,7 @@ if __name__ == "__main__":
     ############################################################################################
     # Load the Weights
     brute_path = os.path.join("attacks", "Brute")
-    tmp_filename = f"{args.explainer}_Brute_{args.model}_{args.dataset}_rseed_{args.rseed}_"
+    tmp_filename = f"{args.explainer}_Brute_1_{args.model}_{args.dataset}_rseed_{args.rseed}_"
     tmp_filename += f"B_size_{args.background_size}_seed_0.npy"
     S_1_idx = load = np.load(os.path.join(brute_path, tmp_filename))
     f_S_1 = f_D_1[S_1_idx]
@@ -240,7 +237,7 @@ if __name__ == "__main__":
     final_abs = np.abs(biased_shap_values[s_idx])
     print(f"Rank after attack : {final_rank}")
     print(f"Abs value before attack : {final_abs}")
-    print(f"Biased Subsampled Demographic Parity : {biased_shap_values.sum():.3f}\n")
+    print(f"Biased Subsampled Demographic Parity : {biased_shap_values.sum():.3f}\n\n")
 
 
     if args.save:

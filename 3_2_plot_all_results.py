@@ -8,6 +8,7 @@ import matplotlib as mp
 mp.rcParams['text.usetex'] = True
 mp.rcParams['font.size'] = 20
 mp.rcParams['font.family'] = 'serif'
+import seaborn as sns
 
 #from matplotlib import font_manager
 ## My path to Times
@@ -18,13 +19,19 @@ mp.rcParams['font.family'] = 'serif'
 #plt.rcParams['font.serif'] = prop.get_name()
 #plt.rcParams['font.size'] = 20
 
+def get_cdf(data):
+    data = np.concatenate(([0], np.sort(data), [100]))
+    cdf = np.concatenate((np.linspace(0, 1, data.shape[0]-1), [1]))
+    return data, cdf
+
 
 if __name__ == "__main__":
 
     df = pd.read_csv(os.path.join("attacks", "results.csv"))
     df["rank_diff"] = df["final_rank"] - df["init_rank"]
     df.loc[df["rank_diff"] > 8, "rank_diff"] = 9
-    #df["abs_diff"] = 100 * (df["init_abs"] - df["final_abs"]) / df["init_abs"]
+    df["brute_abs_diff"] = 100 * (df["init_abs"] - df["brute_abs"]) / df["init_abs"]
+    df["fool_abs_diff"] = 100 * (df["init_abs"] - df["final_abs"]) / df["init_abs"]
     grouped = df.groupby('dataset')
 
     # ECDF
@@ -40,27 +47,36 @@ if __name__ == "__main__":
     # plt.legend(loc="lower right", fontsize=15, framealpha=1)
     # plt.savefig(os.path.join("Images", f"rank_results.pdf"), bbox_inches='tight')
 
-    # Increases in Rank
-    plt.figure()
-    for i, (name, group) in enumerate(grouped):
-        rank_diffs = group["rank_diff"].value_counts()
-        width = 0.15
-        plt.bar(rank_diffs.index + (i-1.5)*width, rank_diffs, width=width, label=name)
-
-    plt.xticks([-1] + list(range(10)), ['-1','0','1','2','3','4','5','6','7','8','$>$8'])
-    plt.xlabel("Rank Increase")
-    plt.ylabel("Number of Attacks")
-    plt.legend(loc="upper left", bbox_to_anchor=(0.53,1), fontsize=15, framealpha=0.75)
-    plt.savefig(os.path.join("Images", f"rank_results.pdf"), bbox_inches='tight')
-
-    # # Decreases in amplitude
+    # # Increases in Rank
     # plt.figure()
     # for i, (name, group) in enumerate(grouped):
-    #     abs_diffs = group["abs_diff"]
-    #     plt.hist(abs_diffs, bins=np.arange(0, 101, 10), label=name, alpha=0.4)
+    #     rank_diffs = group["rank_diff"].value_counts()
+    #     width = 0.15
+    #     plt.bar(rank_diffs.index + (i-1.5)*width, rank_diffs, width=width, label=name)
 
-    # plt.xlim(0, 100)
-    # plt.xlabel("Relative Amplitude Decrease (\%)")
-    # plt.ylabel("Number of Experiments")
-    # plt.legend(fontsize=15, framealpha=1)
-    # plt.savefig(os.path.join("Images", f"abs_results.pdf"), bbox_inches='tight')
+    # plt.xticks([-1] + list(range(10)), ['-1','0','1','2','3','4','5','6','7','8','$>$8'])
+    # plt.xlabel("Rank Increase")
+    # plt.ylabel("Number of Attacks")
+    # plt.legend(loc="upper left", bbox_to_anchor=(0.53,1), fontsize=15, framealpha=0.75)
+    # plt.savefig(os.path.join("Images", f"rank_results.pdf"), bbox_inches='tight')
+
+
+    df_copy = [ pd.DataFrame(np.column_stack((df["dataset"], df["brute_abs_diff"], len(df)*["Brute"])),
+                            columns=["dataset", "diff", "method"]),
+                pd.DataFrame(np.column_stack((df["dataset"], df["fool_abs_diff"], len(df)*["Ours"])),
+                            columns=["dataset", "diff", "method"]) ]
+    df_copy = pd.concat(df_copy)
+
+    # Decreases in relative amplitude
+    order = ["COMPAS", "Adult", "Marketing" ,"C\&C"]
+    sns.boxplot(x="dataset", y="diff", hue="method", data=df_copy, width=0.45, order=order)
+
+    # plt.figure()
+    # colors = ['b', 'orange', 'g', 'r']
+    # for i, (name, group) in enumerate(grouped):
+    #     plt.step(*get_cdf(group["brute_abs_diff"]), '--', linewidth=2, color=colors[i], where='post')
+    #     plt.step(*get_cdf(group["fool_abs_diff"]), linewidth=2, color=colors[i], where='post', label=name)
+    plt.xlabel("Dataset")
+    plt.ylabel("Relative Amplitude Decrease (\%)")
+    plt.legend(fontsize=15, framealpha=1, loc="upper right", bbox_to_anchor=(1,0.8))
+    plt.savefig(os.path.join("Images", f"abs_results.pdf"), bbox_inches='tight')

@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
-    parser.add_argument('--background_size', type=int, default=2000, help='Size of background minibatch, -1 means all')
+    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
     parser.add_argument('--time_multiplier', type=int, default=1, help='How much longer than computing the weights')
     args = parser.parse_args()
 

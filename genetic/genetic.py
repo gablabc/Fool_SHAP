@@ -13,12 +13,14 @@ class GeneticAlgorithm(Algorithm):
         explainer,
         S_0, S_1,
         s_idx,
+        detector,
         constant=None,
         **kwargs
     ):
         super().__init__(
             explainer=explainer,
             S_0=S_0, S_1=S_1, s_idx=s_idx,
+            detector=detector,
             constant=constant,
         )
         
@@ -207,7 +209,8 @@ class GeneticAlgorithm(Algorithm):
         return self.S_1_pop[np.argsort(self.L_pop)[0]]
 
     def log_losses(self):
-        _best = self.get_best_idx()
+        best_idx = self.get_best_idx()
         self.iter_log['iter'].append(self.iter)
+        self.iter_log['loss'].append(np.abs(self.E_pop[best_idx, self.s_idx]))
+        self.iter_log['detection'].append(self.detector(self.S_1_pop[best_idx]))
         self.iter += 1
-        self.iter_log['loss'].append(np.abs(self.E_pop[_best, self.s_idx]))

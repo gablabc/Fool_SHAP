@@ -9,7 +9,8 @@ class Algorithm:
     def __init__(
             self,
             explainer,
-            S_0, S_1, s_idx, 
+            S_0, S_1, s_idx,
+            detector,
             constant=None,
         ):
 
@@ -17,6 +18,7 @@ class Algorithm:
         self.S_0 = S_0
         self.S_1 = S_1
         self.s_idx = s_idx
+        self.detector = detector
         self.M, self.d = self.S_0.shape
 
         self.col_id = list(range(self.d))
@@ -35,7 +37,7 @@ class Algorithm:
 
         self.result_explanation = {'original': None, 'changed': None}
         self.result_data = None
-        self.iter_log = {'iter':[], 'loss':[]}
+        self.iter_log = {'iter' : [], 'loss' : [], 'detection' : []}
 
 
     def fool(self, random_state=None):

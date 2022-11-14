@@ -2,8 +2,16 @@
 
 """
 import argparse
-import numpy as np
+from functools import partial
+import pandas as pd
 import os
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
+import xgboost
+
+import sys
+sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
+import shap
 
 import matplotlib.pyplot as plt
 import matplotlib as mp
@@ -12,7 +20,6 @@ mp.rcParams['font.size'] = 21
 mp.rcParams['font.family'] = 'serif'
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
 import genetic
 from utils import audit_detection
 
@@ -20,70 +27,60 @@ from utils import audit_detection
 if __name__ == "__main__":
 
     # Parser initialization
-    parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='adult_income', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser = argparse.ArgumentParser(description='Bob')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
+    parser.add_argument('--model', type=str, default="rf", help='Model type')
     args = parser.parse_args()
 
-    # Get the data
-    filepath = os.path.join("datasets", "preprocessed", args.dataset)
-    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
-                                        get_data(args.dataset, "xgb", rseed=args.rseed)
+    X,y = shap.datasets.adult()
+    X.columns = ["Age", "Workclass", "EducationNum", "MaritalStatus", "Occupation",
+                "Relationship", "Race", "Sex", "CapitalGain", "CapitalLoss",
+                "HoursPerWeek", "Country"]
+    features = X.columns
+    y = y.astype(int)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=args.rseed)
+    model = xgboost.XGBClassifier(random_state=0, eval_metric="error", use_label_encoder=False)
+    model.fit(X_train, y_train)
 
-    # Get B and F
-    D_0, D_1 = get_foreground_background(X_split, args.dataset)
-
-    # OHE+Ordinally encode B and F
-    if ordinal_encoder is not None:
-        D_0 = ordinal_encoder.transform(D_0)
-        D_1 = ordinal_encoder.transform(D_1)
-        # Permute features to match ordinal encoding
-        numerical_features = ordinal_encoder.transformers_[0][2]
-        categorical_features = ordinal_encoder.transformers_[1][2] 
-        features = numerical_features + categorical_features
-    if ohe_encoder is not None:
-        D_0 = ohe_encoder.transform(D_0)
-        D_1 = ohe_encoder.transform(D_1)
+    # Reference datasets
+    M = 100
+    D_0 = shuffle(X[X["Sex"]==0], random_state=args.rseed)
+    f_D_0 = model.predict_proba(D_0)[:, [1]]
+    S_0 = D_0.iloc[:M]
+    f_S_0 = f_D_0[:M]
+    D_1 = shuffle(X[X["Sex"]==1], random_state=args.rseed)
+    f_D_1 = model.predict_proba(D_1)[:, [1]]
+    S_1 = D_1.iloc[:M]
 
     n_features = len(features)
 
-    # Load the model
-    tmp_filename = f"xgb_{args.dataset}_{args.rseed}"
-    model = load_model("xgb", "models", tmp_filename)
-
-    # All background/foreground predictions
-    M = 100
-    f_D_0 = model.predict_proba(D_0)[:, [1]]
-    S_0 = D_0[:M]
-    f_S_0 = f_D_0[:M]
-    f_D_1 = model.predict_proba(D_1)[:, [1]]
-    S_1 = D_1[:M]
-
     # Get the sensitive feature
-    s_idx = features.index(SENSITIVE_ATTR[args.dataset])
-
-    ############################################################################################
-    #                                       Experiment                                         #
-    ############################################################################################
-    hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-    file_path = os.path.join("Images", args.dataset, "xgb")
-    tmp_filename = f"genetic_{args.dataset}_rseed_{args.rseed}"
-
-    explainer = genetic.Explainer(model)
-
-    # Sensitive index
     s_idx = 7
+
+    # Plot setup
+    hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
+    file_path = os.path.join("Images", "adult_income", "xgb")
+    tmp_filename = f"genetic_rseed_{args.rseed}"
+
+    # Shap explainer wrapper
+    explainer = genetic.Explainer(model)
+    # Wrapper for the detector
+    def detector_wrapper(S_1, f_S_0, f_D_0, f_D_1, model):
+        f_S_1 = model.predict_proba(S_1)[:, [1]]
+        return audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.01)
+    detector = partial(detector_wrapper, f_S_0=f_S_0, f_D_0=f_D_0, f_D_1=f_D_1, model=model)
+
     # Peturbate the background
-    one_hot_columns = list(range(len(numerical_features), S_0.shape[1]))
-    alg = genetic.GeneticAlgorithm(explainer, S_0, S_1, s_idx, constant=one_hot_columns, pop_count=25)
+    constant_features = ["Workclass", "MaritalStatus", "Occupation", "Relationship", "Race", 
+                         "Sex", "Country"]
+    alg = genetic.GeneticAlgorithm(explainer, S_0, S_1, s_idx, detector=detector, 
+                                    constant=constant_features, pop_count=25)
+    
     detection = 0
     for i in range(1, 5):
         alg.fool_aim(max_iter=50, random_state=0)
         S_1_prime = alg.S_1_prime
         f_S_1 = model.predict_proba(S_1_prime)[:, [1]]
-
-        # Detection
-        detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.01)
 
         hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
         plt.figure()
@@ -94,12 +91,9 @@ if __name__ == "__main__":
         plt.xlabel("Output")
         plt.ylabel("CDF")
         plt.legend(framealpha=1, loc="lower right")
-        plt.savefig(os.path.join(file_path, tmp_filename + f"_ite_{50*i:d}_detect_{detection}.pdf"), bbox_inches='tight')
+        plt.savefig(os.path.join(file_path, tmp_filename + f"_ite_{50*i:d}.pdf"), bbox_inches='tight')
 
-    ############################################################################################
-    #                                     Save Results                                         #
-    ############################################################################################
-
-    results_file = os.path.join("attacks", "Genetic", tmp_filename + ".csv")
-    alg.iter_log.to_csv(results_file)
+    # Save logs
+    results_file = os.path.join("attacks", "Genetic", "xgb_" + tmp_filename + ".csv")
+    pd.DataFrame(alg.iter_log).to_csv(results_file, index=False)
     

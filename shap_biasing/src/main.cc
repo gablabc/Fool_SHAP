@@ -17,6 +17,8 @@ struct MyDatum {
 	MyFeature feature;
 };
 
+
+
 double distance(MyFeature x, MyFeature y) {
 	// Univariate data
 	if (x.size() == 1 & y.size() == 1 & x[0].first == y[0].first) {
@@ -48,7 +50,8 @@ double distance(MyFeature x, MyFeature y) {
 }
 
 
-vector<MyDatum> readFile(string filename) {
+
+vector<MyDatum> readFileData(string filename) {
 	vector<MyDatum> data;
 	ifstream ifs(filename);
 
@@ -71,9 +74,26 @@ vector<MyDatum> readFile(string filename) {
 }
 
 
-// sizes[label] = number of points having the label
+
+vector<double> readFileBounds(string filename){
+    ifstream ifs(filename);
+    vector<double> bounds;
+    int N(0);
+    for (string line; getline(ifs, line); ) {
+        stringstream ss(line);
+        double feature;
+        while (ss >> feature){
+            bounds.push_back(feature);
+        }
+        N++;
+    }
+    return bounds;
+}
+
+
+
 template <class Datum>
-void biasedSampling(vector<Datum> data, double lambda) {
+void MCF(vector<Datum> data, vector<double> bounds, double lambda) {
 	double N = data.size();
 
 	SmartDigraph g;
@@ -90,7 +110,7 @@ void biasedSampling(vector<Datum> data, double lambda) {
 	for (int i = 0; i < data.size(); ++i) {
 		left.push_back(g.addNode());
 		SmartDigraph::Arc a = g.addArc(s, left[i]);
-		capacity[a] = N;
+		capacity[a] = bounds[i];
 		cost[a] = data[i].coeff;
 		incomming.push_back(a);
 	}
@@ -132,8 +152,13 @@ void biasedSampling(vector<Datum> data, double lambda) {
 }
 
 
+
 int main(int argc, char *argv[]) {
-	vector<MyDatum> data = readFile(argv[1]);
-	double lambda = stod(argv[2]);
-	biasedSampling(data, lambda);
+	// get the data
+	vector<MyDatum> data  = readFileData(argv[1]);
+	vector<double> bounds = readFileBounds(argv[2]);
+	double lambda = stod(argv[3]);
+
+	// run the MCF
+	MCF(data, bounds, lambda);
 }

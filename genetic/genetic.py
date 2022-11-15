@@ -10,7 +10,7 @@ from .utils import check_early_stopping
 class GeneticAlgorithm(Algorithm):
     def __init__(
         self,
-        explainer,
+        model,
         S_0, S_1,
         s_idx,
         detector,
@@ -18,7 +18,7 @@ class GeneticAlgorithm(Algorithm):
         **kwargs
     ):
         super().__init__(
-            explainer=explainer,
+            model=model,
             S_0=S_0, S_1=S_1, s_idx=s_idx,
             detector=detector,
             constant=constant,
@@ -89,8 +89,6 @@ class GeneticAlgorithm(Algorithm):
             if check_early_stopping(self.iter_log, self.params['epsilon'], self.params['stop_iter']):
                 break
 
-        self.result_explanation['changed'] = self.explainer.GSV(self.S_0, self.get_S_1_prime())
-        self.S_1_prime = self.get_S_1_prime()
         # self.result_data = pd.concat((self.S_1, self.S_1_prime))\
         #     .reset_index(drop=True)\
         #     .rename(index={'0': 'original', '1': 'changed'})\
@@ -105,7 +103,7 @@ class GeneticAlgorithm(Algorithm):
         ):
         # First time the optimization is called
         if self.fresh:
-            super().fool_aim(
+            super().fool(
                 random_state=random_state
             )
         self.fool(
@@ -135,7 +133,7 @@ class GeneticAlgorithm(Algorithm):
         self.S_1_pop += _theta * _mask
         
         if self.params['mutation_with_constraints']:
-            # add min/max constraints for the variable distribution
+            # Add min/max constraints for the variable distribution
             # this feature may lead to a much longer computation time
             S_1_pop_long = self.S_1_pop.reshape(_temp_pop_count * self.M, self.d)
             _X_long = np.tile(self.S_1, (_temp_pop_count, 1))
@@ -204,13 +202,22 @@ class GeneticAlgorithm(Algorithm):
     
     def get_best_idx(self):
         return np.argsort(self.L_pop)[0]
-        
-    def get_S_1_prime(self):
-        return self.S_1_pop[np.argsort(self.L_pop)[0]]
+
 
     def log_losses(self):
+        # Log the results of the current generation
         best_idx = self.get_best_idx()
+        curr_obj = np.abs(self.E_pop[best_idx, self.s_idx])
         self.iter_log['iter'].append(self.iter)
-        self.iter_log['loss'].append(np.abs(self.E_pop[best_idx, self.s_idx]))
+        self.iter_log['loss'].append(curr_obj)
         self.iter_log['detection'].append(self.detector(self.S_1_pop[best_idx]))
         self.iter += 1
+
+        # Update the optimal undetected solution
+        if not self.iter_log['detection'][-1] and curr_obj < self.best_obj:
+            self.best_obj = curr_obj
+            self.result_explanation['changed'] = self.E_pop[best_idx]
+            self.S_1_prime = self.S_1_pop[best_idx]
+
+
+

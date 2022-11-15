@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import json, os
 import subprocess
 from scipy.stats import norm, ks_2samp
@@ -319,6 +320,18 @@ def tree_shap(model, S_0, S_1, ordinal_encoder=None, ohe_encoder=None):
 
     return LSV.reshape((n_features, len(S_0), -1))
 
+
+
+def plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="lower right"):
+    hist_kwargs = {'cumulative':True, 'histtype':'step', 'density':True}
+    plt.figure()
+    plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_kwargs)
+    plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_kwargs)
+    plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_kwargs)
+    plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_kwargs)
+    plt.xlabel("Output")
+    plt.ylabel("CDF")
+    plt.legend(framealpha=1, loc=legend_loc)
 
 
 if __name__ == "__main__":

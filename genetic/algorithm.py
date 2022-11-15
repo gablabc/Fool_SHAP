@@ -3,25 +3,23 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from .explainer import Explainer
 
 class Algorithm:
     def __init__(
             self,
-            explainer,
+            model,
             S_0, S_1, s_idx,
             detector,
             constant=None,
         ):
 
-        self.explainer = explainer
+        self.explainer = Explainer(model)
         self.S_0 = S_0
         self.S_1 = S_1
         self.s_idx = s_idx
         self.detector = detector
         self.M, self.d = self.S_0.shape
-
-        self.col_id = list(range(self.d))
 
         if constant is not None:
             self._idc = []
@@ -46,11 +44,8 @@ class Algorithm:
             np.random.seed(random_state)
 
         self.result_explanation['original'] = self.explainer.GSV(self.S_0, self.S_1)
-        self.result_explanation['changed'] = np.zeros_like(self.result_explanation['original'])
-
-
-    def fool_aim(self, random_state=None):
-        Algorithm.fool(self=self, random_state=random_state)
+        self.result_explanation['changed'] = self.result_explanation['original']
+        self.best_obj = np.abs(self.result_explanation['changed'][self.s_idx])
 
 
     # #:# plots 
@@ -75,14 +70,18 @@ class Algorithm:
     #     plt.show()
 
 
-    def plot_losses(self, lw=3, figsize=(9, 6)):
-        plt.rcParams["figure.figsize"] = figsize
-        plt.plot(
-            self.iter_log['iter'], 
-            self.iter_log['loss'],
-            color='#000000',
-            lw=lw
-        )
-        plt.xlabel('epoch', fontsize=16)
-        plt.ylabel('Sensitive Feature Attribution', fontsize=16)
+    def plot_losses(self):
+        # Curves of Shapley values
+        fig, ax = plt.subplots()
+        iters = self.iter_log['iter']
+        ax.plot(iters, self.iter_log['loss'], 'r-')
+        # set x-axis label
+        ax.set_xlabel("Iterations")
+        # set y-axis label
+        ax.set_ylabel("Amplitude", color="red")
+        ax.tick_params(axis='y', labelcolor="red")
+        ax2 = ax.twinx()
+        ax2.plot(iters, self.iter_log['detection'], 'b-')
+        ax2.set_ylabel("Detection", color="blue")
+        ax2.tick_params(axis='y', labelcolor="blue")
         plt.show()

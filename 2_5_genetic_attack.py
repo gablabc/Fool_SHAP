@@ -7,6 +7,7 @@ import pandas as pd
 import os
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+from sklearn.ensemble import RandomForestClassifier
 import xgboost
 
 import sys
@@ -39,7 +40,13 @@ if __name__ == "__main__":
     features = X.columns
     y = y.astype(int)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=args.rseed)
-    model = xgboost.XGBClassifier(random_state=0, eval_metric="error", use_label_encoder=False)
+    if args.model == "rf":
+        model = RandomForestClassifier(random_state=10, n_estimators=50, max_depth=5, min_samples_leaf=50)
+    elif args.model == "xgb":
+        y = y.astype(int)
+        model = xgboost.XGBClassifier(random_state=0, eval_metric="error", use_label_encoder=False)
+    else:
+        raise NotImplementedError()
     model.fit(X_train, y_train)
 
     # Reference datasets
@@ -59,7 +66,7 @@ if __name__ == "__main__":
 
     # Plot setup
     hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-    file_path = os.path.join("Images", "adult_income", "xgb")
+    file_path = os.path.join("Images", "adult_income", args.model)
     tmp_filename = f"genetic_rseed_{args.rseed}"
 
     # Shap explainer wrapper
@@ -77,7 +84,7 @@ if __name__ == "__main__":
                                     constant=constant_features, pop_count=25)
     
     detection = 0
-    for i in range(1, 5):
+    for i in range(1, 3):
         alg.fool_aim(max_iter=50, random_state=0)
         S_1_prime = alg.S_1_prime
         f_S_1 = model.predict_proba(S_1_prime)[:, [1]]
@@ -94,6 +101,6 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(file_path, tmp_filename + f"_ite_{50*i:d}.pdf"), bbox_inches='tight')
 
     # Save logs
-    results_file = os.path.join("attacks", "Genetic", "xgb_" + tmp_filename + ".csv")
+    results_file = os.path.join("attacks", "Genetic", f"{args.model}_" + tmp_filename + ".csv")
     pd.DataFrame(alg.iter_log).to_csv(results_file, index=False)
     

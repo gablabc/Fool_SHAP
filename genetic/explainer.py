@@ -1,19 +1,24 @@
 import numpy as np
 import shap
-
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+import xgboost
 class Explainer:
     def __init__(self, model):
         self.model = model
 
-        _model_class = str(type(model))
-        if "xgboost.sklearn.XGBClassifier" in _model_class:
+        model_class = type(model)
+        if model_class in [xgboost.XGBClassifier, RandomForestClassifier]:
             self.explainer = lambda f, b: shap.TreeExplainer(model, data=b, model_output="probability")(f)
-        if "xgboost.sklearn.XGBRegressor" in _model_class:
+        if model_class in [xgboost.XGBRegressor, RandomForestRegressor]:
             self.explainer = lambda f, b: shap.TreeExplainer(model, data=b, model_output="raw")(f)
 
 
     def GSV(self, S_0, S_1):
-        return self.explainer(S_0, S_1).values.mean(axis=0)
+        vals = self.explainer(S_0, S_1).values
+        if vals.ndim == 2:
+            return vals.mean(axis=0)
+        else:
+            return vals[..., 1].mean(axis=0)
 
 
     def GSV_pop(self, S_0, S_1_pop):

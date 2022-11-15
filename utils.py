@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import json, os
-import subprocess
+import ctypes
+import glob
 from scipy.stats import norm, ks_2samp
 
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
@@ -266,59 +267,80 @@ def confidence_interval(LSV, significance):
     return alpha * sigma / np.sqrt(2 * M)
 
 
-def tree_shap(model, S_0, S_1, ordinal_encoder=None, ohe_encoder=None):
+
+def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
     
     # Find out which ohe columns correspond to which feature
     if ordinal_encoder is not None and ohe_encoder is not None:
         n_num_features = len(ordinal_encoder.transformers_[0][2])
         categorical_to_features = list(range(n_num_features))
-        counter = n_num_features
         for idx in range(len(ordinal_encoder.transformers_[1][2])):
             # Associate the feature to its encoding columns
             for _ in ordinal_encoder.transformers_[1][1].categories_[idx]:
                 categorical_to_features.append(idx + n_num_features)
-                counter = counter + 1
 
-        S_0 = ohe_encoder.transform(S_0)
-        S_1 = ohe_encoder.transform(S_1)
+        D_0 = ohe_encoder.transform(D_0)
+        D_1 = ohe_encoder.transform(D_1)
     else:
-        categorical_to_features = list(range(S_0.shape[1]))
-
+        categorical_to_features = list(range(D_0.shape[1]))
+    categorical_to_features = np.array(categorical_to_features, dtype=np.int32)
     n_features = categorical_to_features[-1] + 1
     
-    mask = Independent(S_1, max_samples=len(S_1))
+    mask = Independent(D_1, max_samples=len(D_1))
     ensemble = Tree(model, data=mask).model
 
+    # All numpy arrays must be C_CONTIGUOUS
+    assert ensemble.thresholds.flags['C_CONTIGUOUS']
+    assert ensemble.features.flags['C_CONTIGUOUS']
+    assert ensemble.children_left.flags['C_CONTIGUOUS']
+    assert ensemble.children_right.flags['C_CONTIGUOUS']
 
-    # Save tree ensemble
-    np.savetxt("categorical_to_features.txt", categorical_to_features, fmt="%d")
-    np.savetxt("feature.txt", ensemble.features, fmt="%d")
-    np.savetxt("value.txt", ensemble.values[..., -1], fmt="%.20e")
-    np.savetxt("threshold.txt", ensemble.thresholds, fmt="%.20e")
-    np.savetxt("left.txt", ensemble.children_left, fmt="%d")
-    np.savetxt("right.txt", ensemble.children_right, fmt="%d")
+    if type(D_0) == pd.DataFrame:
+        D_0 = np.ascontiguousarray(D_0)
+    if type(D_1) == pd.DataFrame:
+        D_1 = np.ascontiguousarray(D_1)
 
-    # Save data
-    pd.DataFrame(S_1).to_csv("background.txt", sep=' ', index=False, header=False)
-    pd.DataFrame(S_0).to_csv("foreground.txt", sep=' ', index=False, header=False)
+    # Shape properties
+    N_0 = D_0.shape[0]
+    N_1 = D_1.shape[0]
+    Nt = ensemble.features.shape[0]
+    d = D_0.shape[1]
+    depth = ensemble.features.shape[1]
 
-    cmd = f"./tree_shap/main > output.txt"
-    proc = subprocess.Popen('exec ' + cmd, shell=True)
-    proc.wait()
-    LSV = np.loadtxt('output.txt')
+    # Values at each node
+    values = np.ascontiguousarray(ensemble.values[..., -1])
 
-    # Clean up
-    os.remove("background.txt")
-    os.remove("foreground.txt")
-    os.remove("categorical_to_features.txt")
-    os.remove("feature.txt")
-    os.remove("value.txt")
-    os.remove("threshold.txt")
-    os.remove("left.txt")
-    os.remove("right.txt")
-    os.remove("output.txt")
+    # Where to store the output
+    LSV = np.zeros((n_features, N_0, N_1))
 
-    return LSV.reshape((n_features, len(S_0), -1))
+    ####### Wrap C / Python #######
+
+    # Find the shared library, the path depends on the platform and Python version
+    libfile = glob.glob(os.path.join('build', '*', 'treeshap*.so'))[0]
+
+    # Open the shared library
+    mylib = ctypes.CDLL(libfile)
+
+    # Tell Python the argument and result types of function main_treeshap
+    mylib.main_treeshap.restype = ctypes.c_int
+    mylib.main_treeshap.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, 
+                                    ctypes.c_int, ctypes.c_int,
+                                    np.ctypeslib.ndpointer(dtype=np.float64),
+                                    np.ctypeslib.ndpointer(dtype=np.float64),
+                                    np.ctypeslib.ndpointer(dtype=np.int32),
+                                    np.ctypeslib.ndpointer(dtype=np.float64),
+                                    np.ctypeslib.ndpointer(dtype=np.float64),
+                                    np.ctypeslib.ndpointer(dtype=np.int32),
+                                    np.ctypeslib.ndpointer(dtype=np.int32),
+                                    np.ctypeslib.ndpointer(dtype=np.int32),
+                                    np.ctypeslib.ndpointer(dtype=np.float64)]
+
+    # 3. call function mysum
+    mylib.main_treeshap(N_0, N_1, Nt, d, depth, D_0, D_1, categorical_to_features,
+                        ensemble.thresholds, values, ensemble.features, ensemble.children_left, 
+                        ensemble.children_right, LSV)
+
+    return LSV  # (d, N_0, N_1)
 
 
 
@@ -332,6 +354,7 @@ def plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="lower right"):
     plt.xlabel("Output")
     plt.ylabel("CDF")
     plt.legend(framealpha=1, loc=legend_loc)
+
 
 
 if __name__ == "__main__":

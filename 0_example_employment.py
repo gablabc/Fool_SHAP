@@ -1,7 +1,7 @@
 # %%
-from functools import partial
 import pandas as pd
 import numpy as np
+from sklearn.model_selection import train_test_split
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 import matplotlib as mp
@@ -11,14 +11,13 @@ mp.rcParams['font.family'] = 'serif'
 
 import os, sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
-
-from sklearn.model_selection import train_test_split
-from stealth_sampling import compute_weights, explore_attack
-from utils import audit_detection, confidence_interval, plot_CDFs
-
 import shap
 from shap.maskers import Independent
-import genetic
+
+from src.stealth_sampling import compute_weights, explore_attack
+from src.utils import audit_detection, confidence_interval, plot_CDFs
+from src.genetic import GeneticAlgorithm
+
 
 
 # %%
@@ -108,22 +107,16 @@ CI = confidence_interval(honest_LSV, 0.01)
 # Sensitive index
 s_idx = 0
 S_1 = D_1[:M]
-f_S_1 = f_D_1[:M]
-# Wrapper for the detector
-def detector_wrapper(S_1, f_S_0, f_D_0, f_D_1, model):
-    f_S_1 = model.predict_proba(S_1)[:, [1]]
-    return audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.05)
-detector = partial(detector_wrapper, f_S_0=f_S_0, f_D_0=f_D_0, f_D_1=f_D_1, model=model)
 # Initialize the genetic algorithm
-alg = genetic.GeneticAlgorithm(model, S_0, S_1, s_idx, 
-                               detector=detector, pop_count=10, mutation_with_constraints=False)
+alg = GeneticAlgorithm(model, S_0, S_1, f_S_0, f_D_0, f_D_1, s_idx, 
+                        pop_count=25, mutation_with_constraints=False)
 
 # %%
 # Run the genetic algorithm for 200 iterations
 alg.fool_aim(max_iter=200, random_state=0)
 alg.plot_losses()
 plt.savefig(os.path.join("Images", "toy", "genetic_iterations.pdf"), bbox_inches='tight')
-plt.show()
+# plt.show()
 
 # Get the resulting explanation
 genetic_shap_values = alg.result_explanation['changed']
@@ -133,7 +126,7 @@ genetic_shap_values = alg.result_explanation['changed']
 f_S_1 = model.predict_proba(alg.S_1_prime)[:, [1]]
 plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="center")
 plt.savefig(os.path.join("Images", "toy", "genetic_CDFs.pdf"), bbox_inches='tight')
-plt.show()
+# plt.show()
 
 # Detection algorithm
 detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
@@ -141,7 +134,7 @@ print(f"Audit Detection : {detection==1}")
 
 # %%
 ####################### Brute Force #######################
-from stealth_sampling import brute_force
+from src.stealth_sampling import brute_force
 Phi_S0_zj = LSV.mean(1).T # Phi(f, S_0', z^(j)) coeffs
 
 # Run brute-force samplng for 5 minutes
@@ -152,7 +145,7 @@ brute_shap_values = Phi_S0_zj[S_1_p_idx].mean(0)
 
 plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="center")
 plt.savefig(os.path.join("Images", "toy", "brute_CDFs.pdf"), bbox_inches='tight')
-plt.show()
+# plt.show()
 
 # Detection algorithm
 detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
@@ -162,7 +155,7 @@ print(f"Audit Detection : {detection==1}")
 ###################### Fool SHAP ######################
 # Main loop for the Attack
 lambd_space, _, biased_shaps, detections = \
-        explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s_idx, 0, 1, 20, 0.01)
+        explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s_idx, 0, 1, 20, 0.05)
 
 # Confidence Intervals CLT
 bandSHAP = norm.ppf(0.995) * np.std(biased_shaps, axis=1) / np.sqrt(100)
@@ -196,15 +189,15 @@ plt.fill_between(lambd_space, detections + bandDetec, detections - bandDetec,
 plt.plot(lambd_space, 5 * np.ones(lambd_space.shape), 'k--')
 plt.xlabel(r"$\lambda$")
 plt.xscale('log')
-plt.show()
+# plt.show()
 
 # %%
-optim_lambda = 10**0.2
+optim_lambda = 10**0.25
 # Attack !!!
 weights = compute_weights(f_D_1, Phi_S0_zj[:, 0], optim_lambda)
 # Biased sampling
 biased_idx = np.random.choice(len(f_D_1), M, p=weights/np.sum(weights))
-# print(len(np.unique(biased_idx)))
+print(len(np.unique(biased_idx)))
 S_1 = D_1[biased_idx]
 f_S_1 = f_D_1[biased_idx]
 
@@ -212,7 +205,7 @@ f_S_1 = f_D_1[biased_idx]
 # Observe the CDFs
 plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="center")
 plt.savefig(os.path.join("Images", "toy", "fool_CDFs.pdf"), bbox_inches='tight')
-plt.show()
+# plt.show()
 
 # Detection algorithm
 detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
@@ -234,16 +227,16 @@ CI_b = confidence_interval(LSV, 0.01)
 # %%
 # Final Results
 df = pd.DataFrame(np.column_stack((honest_shap_values,
-                                   genetic_shap_values,
                                    brute_shap_values,
+                                   genetic_shap_values,
                                    biased_shap_values)),
-                                   columns = ["Original", "Genetic", 
-                                              "Brute", "Fool SHAP"],
+                                   columns = ["Original", "Brute",
+                                              "Genetic", "Fool SHAP"],
                                    index=features)
 df.plot.barh(capsize=4)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('GSV')
 plt.savefig(os.path.join("Images", "toy", "attacks.pdf"), bbox_inches='tight')
-plt.show()
+# plt.show()
 
 # %%

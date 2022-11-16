@@ -1,30 +1,26 @@
 import numpy as np
-import shap
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-import xgboost
+
+from ..utils import tree_shap
 class Explainer:
     def __init__(self, model):
         self.model = model
 
-        model_class = type(model)
-        if model_class in [xgboost.XGBClassifier, RandomForestClassifier]:
-            self.explainer = lambda f, b: shap.TreeExplainer(model, data=b, model_output="probability")(f)
-        if model_class in [xgboost.XGBRegressor, RandomForestRegressor]:
-            self.explainer = lambda f, b: shap.TreeExplainer(model, data=b, model_output="raw")(f)
+
+    def GSV(self, S_0, S_1, ordinal_encoder, ohe_encoder):
+        LSV = tree_shap(self.model, S_0, S_1, ordinal_encoder, ohe_encoder)
+        return LSV.mean(1).mean(1)
 
 
-    def GSV(self, S_0, S_1):
-        vals = self.explainer(S_0, S_1).values
-        if vals.ndim == 2:
-            return vals.mean(axis=0)
-        else:
-            return vals[..., 1].mean(axis=0)
-
-
-    def GSV_pop(self, S_0, S_1_pop):
-        S_1_long = S_1_pop.reshape((S_1_pop.shape[0], S_1_pop.shape[1]*S_1_pop.shape[2]))
-        return np.apply_along_axis(
-            lambda S_1_long, S_0, d: self.GSV(S_0, S_1_long.reshape((d[0], d[1]))),
-            1, S_1_long, S_0=S_0, d=S_1_pop[0].shape
-        )
+    def GSV_pop(self, S_0, S_1_pop, ordinal_encoder, ohe_encoder):
+        N_pop, M, d = S_1_pop.shape
+        S_1_aug = S_1_pop.reshape((M * N_pop, d))
+        LSV = tree_shap(self.model, S_0, S_1_aug, ordinal_encoder, ohe_encoder)
+        GSV = LSV.mean(1)
+        GSV = GSV.reshape((d, N_pop, M)).mean(-1)
+        return GSV.T
+        # # S_1_long = S_1_pop.reshape((S_1_pop.shape[0], S_1_pop.shape[1]*S_1_pop.shape[2]))
+        # return np.apply_along_axis(
+        #     lambda S_1_long, S_0, d: self.GSV(S_0, S_1_long.reshape((d[0], d[1]))),
+        #     1, S_1_long, S_0=S_0, d=S_1_pop[0].shape
+        # )
 

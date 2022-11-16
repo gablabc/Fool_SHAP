@@ -6,24 +6,28 @@ from .algorithm import *
 from .utils import check_early_stopping
 
 
-
 class GeneticAlgorithm(Algorithm):
     def __init__(
         self,
         model,
-        S_0, S_1,
+        S_0, S_1, 
+        f_S_0, f_D_0, f_D_1,
         s_idx,
-        detector,
         constant=None,
+        ordinal_encoder=None,
+        ohe_encoder=None,
         **kwargs
     ):
         super().__init__(
             model=model,
-            S_0=S_0, S_1=S_1, s_idx=s_idx,
-            detector=detector,
+            S_0=S_0, S_1=S_1, 
+            f_S_0=f_S_0, f_D_0=f_D_0, f_D_1=f_D_1,
+            s_idx=s_idx,
             constant=constant,
+            ordinal_encoder=ordinal_encoder,
+            ohe_encoder=ohe_encoder
         )
-        
+
         # Setup
         params = dict(
             epsilon=1e-5,
@@ -172,7 +176,7 @@ class GeneticAlgorithm(Algorithm):
 
 
     def evaluation(self):
-        self.E_pop = self.explainer.GSV_pop(self.S_0, self.S_1_pop)
+        self.E_pop = self.explainer.GSV_pop(self.S_0, self.S_1_pop, self.ordinal_encoder, self.ohe_encoder)
         self.L_pop = np.abs(self.E_pop[:, self.s_idx])
 
 

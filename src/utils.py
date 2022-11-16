@@ -244,10 +244,10 @@ def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
                                      [f_S_0, f_S_1]):
         n_samples = len(samples)
         # KS test
-        for _ in range(10):
+        for _ in range(2):
             unbiased_preds = distribution[np.random.choice(len(distribution), n_samples)]
             _, p_val = ks_2samp(samples.ravel(), unbiased_preds.ravel())
-            if p_val < significance / 40:
+            if p_val < significance / 8:
                 return 1
 
         # Wald test
@@ -314,9 +314,10 @@ def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
     LSV = np.zeros((n_features, N_0, N_1))
 
     ####### Wrap C / Python #######
-
+    
     # Find the shared library, the path depends on the platform and Python version
-    libfile = glob.glob(os.path.join('build', '*', 'treeshap*.so'))[0]
+    project_root = os.path.dirname(__file__).split('src')[0]
+    libfile = glob.glob(os.path.join(project_root, 'build', '*', 'treeshap*.so'))[0]
 
     # Open the shared library
     mylib = ctypes.CDLL(libfile)

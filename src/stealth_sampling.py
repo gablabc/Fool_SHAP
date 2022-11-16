@@ -3,7 +3,7 @@ import numpy as np
 import subprocess
 from tqdm import tqdm
 from sklearn.datasets import dump_svmlight_file
-from utils import audit_detection
+from .utils import audit_detection
 import time
 
 
@@ -48,7 +48,7 @@ def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.
         dump_svmlight_file(X, lin_coeffs, f"input.txt")
         
         # Run the cpp program
-        cmd = f"./shap_biasing/main input.txt bounds.txt {regul_lambda} > output.txt"
+        cmd = f"./src/shap_biasing/main input.txt bounds.txt {regul_lambda} > output.txt"
         proc = subprocess.Popen('exec ' + cmd, shell=True)
         try:
             proc.wait(timeout)

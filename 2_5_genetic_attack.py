@@ -2,105 +2,77 @@
 
 """
 import argparse
-from functools import partial
 import pandas as pd
-import os
-from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
-from sklearn.ensemble import RandomForestClassifier
-import xgboost
 
-import sys
+import os, sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
-import shap
-
-import matplotlib.pyplot as plt
-import matplotlib as mp
-mp.rcParams['text.usetex'] = True
-mp.rcParams['font.size'] = 21
-mp.rcParams['font.family'] = 'serif'
 
 # Local imports
-import genetic
-from utils import audit_detection
+from src.genetic import GeneticAlgorithm
+from src.utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
 
 
 if __name__ == "__main__":
 
     # Parser initialization
-    parser = argparse.ArgumentParser(description='Bob')
+    parser = argparse.ArgumentParser(description='Script for training models')
+    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
-    parser.add_argument('--model', type=str, default="rf", help='Model type')
     args = parser.parse_args()
 
-    X,y = shap.datasets.adult()
-    X.columns = ["Age", "Workclass", "EducationNum", "MaritalStatus", "Occupation",
-                "Relationship", "Race", "Sex", "CapitalGain", "CapitalLoss",
-                "HoursPerWeek", "Country"]
-    features = X.columns
-    y = y.astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=args.rseed)
-    if args.model == "rf":
-        model = RandomForestClassifier(random_state=10, n_estimators=50, max_depth=5, min_samples_leaf=50)
-    elif args.model == "xgb":
-        y = y.astype(int)
-        model = xgboost.XGBClassifier(random_state=0, eval_metric="error", use_label_encoder=False)
-    else:
-        raise NotImplementedError()
-    model.fit(X_train, y_train)
+    # Get the data
+    filepath = os.path.join("datasets", "preprocessed", args.dataset)
+    X_split, y_split, features, ordinal_encoder, ohe_encoder = \
+                                        get_data(args.dataset, args.model, rseed=args.rseed)
 
-    # Reference datasets
-    M = 100
-    D_0 = shuffle(X[X["Sex"]==0], random_state=args.rseed)
-    f_D_0 = model.predict_proba(D_0)[:, [1]]
-    S_0 = D_0.iloc[:M]
-    f_S_0 = f_D_0[:M]
-    D_1 = shuffle(X[X["Sex"]==1], random_state=args.rseed)
-    f_D_1 = model.predict_proba(D_1)[:, [1]]
-    S_1 = D_1.iloc[:M]
+    # Get B and F
+    D_0, D_1 = get_foreground_background(X_split, args.dataset)
+
+    # OHE+Ordinally encode B and F
+    if ordinal_encoder is not None:
+        D_0 = ordinal_encoder.transform(D_0)
+        D_1 = ordinal_encoder.transform(D_1)
+        # Permute features to match ordinal encoding
+        numerical_features = ordinal_encoder.transformers_[0][2]
+        categorical_features = ordinal_encoder.transformers_[1][2] 
+        features = numerical_features + categorical_features
+    else:
+        numerical_features = features
+
 
     n_features = len(features)
 
+    # Load the model
+    tmp_filename = f"{args.model}_{args.dataset}_{args.rseed}"
+    model = load_model(args.model, "models", tmp_filename)
+
+    # All background/foreground predictions
+    if args.model == "xgb":
+        # When explaining Boosted trees with TreeSHAP, we explain the logit
+        f_D_0 = model.predict(D_0, output_margin=True).reshape((-1, 1))
+        f_S_0 = f_D_0[:200]
+        f_D_1 = model.predict(D_1, output_margin=True).reshape((-1, 1))
+    else:
+        # We explain the probability of class 1
+        f_D_0 = model.predict_proba(ohe_encoder.transform(D_0))[:, [1]]
+        f_S_0 = f_D_0[:200]
+        f_D_1 = model.predict_proba(ohe_encoder.transform(D_1))[:, [1]]
+
     # Get the sensitive feature
-    s_idx = 7
+    s_idx = features.index(SENSITIVE_ATTR[args.dataset])
 
     # Plot setup
-    hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-    file_path = os.path.join("Images", "adult_income", args.model)
-    tmp_filename = f"genetic_rseed_{args.rseed}"
+    tmp_filename = f"{args.model}_{args.dataset}_rseed_{args.rseed}.csv"
 
-    # Shap explainer wrapper
-    explainer = genetic.Explainer(model)
-    # Wrapper for the detector
-    def detector_wrapper(S_1, f_S_0, f_D_0, f_D_1, model):
-        f_S_1 = model.predict_proba(S_1)[:, [1]]
-        return audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.01)
-    detector = partial(detector_wrapper, f_S_0=f_S_0, f_D_0=f_D_0, f_D_1=f_D_1, model=model)
-
-    # Peturbate the background
-    constant_features = ["Workclass", "MaritalStatus", "Occupation", "Relationship", "Race", 
-                         "Sex", "Country"]
-    alg = genetic.GeneticAlgorithm(explainer, S_0, S_1, s_idx, detector=detector, 
-                                    constant=constant_features, pop_count=25)
+    alg = GeneticAlgorithm(model, D_0[:200], D_1[:200], f_S_0, f_D_0, f_D_1, s_idx, 
+                            pop_count=5, mutation_with_constraints=False, 
+                            constant=list(range(len(numerical_features),n_features)),
+                            ordinal_encoder=ordinal_encoder, ohe_encoder=ohe_encoder)
     
-    detection = 0
-    for i in range(1, 3):
-        alg.fool_aim(max_iter=50, random_state=0)
-        S_1_prime = alg.S_1_prime
-        f_S_1 = model.predict_proba(S_1_prime)[:, [1]]
-
-        hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-        plt.figure()
-        plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
-        plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
-        plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
-        plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
-        plt.xlabel("Output")
-        plt.ylabel("CDF")
-        plt.legend(framealpha=1, loc="lower right")
-        plt.savefig(os.path.join(file_path, tmp_filename + f"_ite_{50*i:d}.pdf"), bbox_inches='tight')
+    alg.fool_aim(max_iter=100, random_state=0)
 
     # Save logs
-    results_file = os.path.join("attacks", "Genetic", f"{args.model}_" + tmp_filename + ".csv")
+    results_file = os.path.join("attacks", "Genetic", tmp_filename)
     pd.DataFrame(alg.iter_log).to_csv(results_file, index=False)
     

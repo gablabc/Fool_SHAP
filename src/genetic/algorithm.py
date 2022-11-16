@@ -22,8 +22,16 @@ class Algorithm:
         ):
 
         self.explainer = Explainer(model)
-        self.S_0 = S_0
-        self.S_1 = S_1
+        if isinstance(S_0, pd.DataFrame):
+            self.feature_names = S_0.columns
+            self.S_0 = S_0.to_numpy()
+        else:
+            self.S_0 = S_0
+        if isinstance(S_1, pd.DataFrame):
+            self.S_1 = S_1.to_numpy()
+        else:
+            self.S_1 = S_1
+        
         self.f_S_0 = f_S_0
         self.f_D_0 = f_D_0
         self.f_D_1 = f_D_1
@@ -33,14 +41,17 @@ class Algorithm:
         self.ohe_encoder = ohe_encoder
 
         if constant is not None:
-            self._idc = []
-            if isinstance(constant[0], str):
-                for const in constant:
-                    self._idc.append(S_0.columns.get_loc(const))
-            elif isinstance(constant[0], int):
-                self._idc = constant
+            if len(constant) == 0:
+                self._idc = None
             else:
-                raise Exception("constant must either contain indices of column names")
+                self._idc = []
+                if isinstance(constant[0], str):
+                    for const in constant:
+                        self._idc.append(S_0.columns.get_loc(const))
+                elif isinstance(constant[0], int):
+                    self._idc = constant
+                else:
+                    raise Exception("constant must either contain indices of column names")
         else:
             self._idc = None
 
@@ -99,6 +110,10 @@ class Algorithm:
 
     # New signature self.detector(S_1) -> {True, False}
     def detector(self, S_1):
+        # This is because when no ordinal_encoder is used
+        # The ohe expects DataFrame
+        if self.ordinal_encoder is None:
+            S_1 = pd.DataFrame(S_1, columns=self.feature_names)
         if isinstance(self.explainer.model, xgboost.XGBClassifier):
             if self.ohe_encoder is None:
                 f_S_1 = self.explainer.model.predict(S_1, output_margin=True).reshape((-1, 1))

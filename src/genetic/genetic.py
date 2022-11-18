@@ -76,7 +76,7 @@ class GeneticAlgorithm(Algorithm):
             self.S_1_pop = np.tile(self.S_1, (self.params['pop_count'], 1, 1))
             self.E_pop = np.tile(self.result_explanation['original'], (self.S_1_pop.shape[0], 1)) 
             self.L_pop = np.zeros(self.params['pop_count']) 
-            self.mutation(adjust=3)
+            #self.mutation(adjust=3)
             self.log_losses()
             self.fresh = False
         
@@ -91,6 +91,8 @@ class GeneticAlgorithm(Algorithm):
             self.log_losses()
             pbar.set_description("Iter: %s || Loss: %s" % (self.iter, self.iter_log['loss'][-1]))
             if check_early_stopping(self.iter_log, self.params['epsilon'], self.params['stop_iter']):
+                break
+            if self.iter >= 10 and np.sum(self.iter_log['detection'][-10:]) == 10:
                 break
 
         # self.result_data = pd.concat((self.S_1, self.S_1_prime))\

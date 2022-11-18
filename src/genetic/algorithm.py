@@ -24,11 +24,11 @@ class Algorithm:
         self.explainer = Explainer(model)
         if isinstance(S_0, pd.DataFrame):
             self.feature_names = S_0.columns
-            self.S_0 = S_0.to_numpy()
+            self.S_0 = np.ascontiguousarray(S_0.to_numpy())
         else:
             self.S_0 = S_0
         if isinstance(S_1, pd.DataFrame):
-            self.S_1 = S_1.to_numpy()
+            self.S_1 = np.ascontiguousarray(S_1.to_numpy())
         else:
             self.S_1 = S_1
         

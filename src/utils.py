@@ -238,6 +238,7 @@ def multidim_KS(sample1, sample2, significance):
 
 
 def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
+
     # Tests conducted by the audit to see if the background and foreground provided
     # are indeed subsampled uniformly from the data.
     for distribution, samples in zip([f_D_0, f_D_1],
@@ -299,6 +300,8 @@ def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
         D_0 = np.ascontiguousarray(D_0)
     if type(D_1) == pd.DataFrame:
         D_1 = np.ascontiguousarray(D_1)
+    assert D_0.flags['C_CONTIGUOUS']
+    assert D_1.flags['C_CONTIGUOUS']
 
     # Shape properties
     N_0 = D_0.shape[0]

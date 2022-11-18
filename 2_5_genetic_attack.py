@@ -3,6 +3,7 @@
 """
 import argparse
 import pandas as pd
+import numpy as np
 
 import os, sys
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
@@ -28,6 +29,8 @@ if __name__ == "__main__":
 
     # Get B and F
     D_0, D_1 = get_foreground_background(X_split, args.dataset)
+    N_0 = D_0.shape[0]
+    N_1 = D_1.shape[0]
 
     # OHE+Ordinally encode B and F
     if ordinal_encoder is not None:
@@ -70,7 +73,7 @@ if __name__ == "__main__":
                             constant=list(range(len(numerical_features),n_features)),
                             ordinal_encoder=ordinal_encoder, ohe_encoder=ohe_encoder)
     
-    alg.fool_aim(max_iter=100, random_state=0)
+    alg.fool_aim(max_iter=50, random_state=0)
 
     # Save logs
     results_file = os.path.join("attacks", "Genetic", tmp_filename)

@@ -36,13 +36,15 @@ if __name__ == "__main__":
 
     # genetic results
     df2 = []
-    for dataset in ["adult_income", "communities", "marketing", "compas"]:
-        for rseed in range(5):
-            filename = os.path.join("attacks", "Genetic", f"rf_{dataset}_rseed_{rseed}.csv")
-            df_genetic = pd.read_csv(filename)
-            ref_abs = df_genetic.loc[0, "loss"]
-            best_abs = df_genetic[df_genetic["detection"]==0]["loss"].min()
-            df2.append([dataset, 100 * (ref_abs - best_abs) / ref_abs, "Genetic"])
+    for model in ["rf", "xgb"]:
+        for dataset in ["adult_income", "communities", "marketing", "compas"]:
+            for rseed in range(5):
+                filename = os.path.join("attacks", "Genetic", f"{model}_{dataset}_rseed_{rseed}.csv")
+                if os.path.exists(filename):
+                    df_genetic = pd.read_csv(filename)
+                    ref_abs = df_genetic.loc[0, "loss"]
+                    best_abs = df_genetic[df_genetic["detection"]==0]["loss"].min()
+                    df2.append([dataset, 100 * (ref_abs - best_abs) / ref_abs, "Genetic"])
     df2 = pd.DataFrame(df2, columns=["dataset", "diff", "method"])
     # ECDF
     # plt.figure()

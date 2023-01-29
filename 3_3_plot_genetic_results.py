@@ -8,13 +8,19 @@ mp.rcParams['text.usetex'] = True
 mp.rcParams['font.size'] = 20
 mp.rcParams['font.family'] = 'serif'
 import seaborn as sns
+import argparse
 
 
 if __name__ == "__main__":
 
+    # Parser initialization
+    parser = argparse.ArgumentParser(description='Bob')
+    parser.add_argument('--model', type=str, default="rf", help='Model type')
+    args = parser.parse_args()
+
     dfs = []
     for seed in range(10):
-        df = pd.read_csv(os.path.join("attacks", "Genetic", f"xgb_genetic_rseed_{seed}.csv"))
+        df = pd.read_csv(os.path.join("attacks", "Genetic", f"{args.model}_genetic_rseed_{seed}.csv"))
         df["Relative Amplitude Decrease"] = 100 * (df.loc[0, 'loss'] - df['loss']) / df.loc[0, 'loss']
         df['seed'] = seed
         dfs.append(df)
@@ -45,6 +51,6 @@ if __name__ == "__main__":
                             color='b', alpha=0.2)
     ax2.set_ylabel("Detection Rate %", color="blue")
     ax2.tick_params(axis='y', labelcolor="blue")
-    figure_path = os.path.join(f"Images", "adult_income", "xgb")
+    figure_path = os.path.join(f"Images", "adult_income", args.model)
     plt.savefig(os.path.join(figure_path, f"genetic_iterations.pdf"), bbox_inches='tight')
 

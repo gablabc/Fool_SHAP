@@ -5,8 +5,8 @@ import os
 from tqdm import tqdm
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model
-from utils import audit_detection
+from src.utils import get_data, get_foreground_background, load_model
+from src.utils import audit_detection
 
 
 if __name__ == "__main__":
@@ -51,6 +51,6 @@ if __name__ == "__main__":
             f_S_0 = f_D_0[np.random.choice(len(f_D_0), M)]
             f_S_1 = f_D_1[np.random.choice(len(f_D_1), M)]
             
-            false_positive_rates += audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.01)
+            false_positive_rates += audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
     false_positive_rates /= 5000
     print(100 * false_positive_rates)

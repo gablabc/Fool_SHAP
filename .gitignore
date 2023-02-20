@@ -4,8 +4,8 @@
 *.pyc
 *.json
 *.npy
-*.sh
-lemon-1.3.1/*
+#*.sh
+src/lemon-1.3.1/*
 api_examples/*
 *.csv
 *.joblib
@@ -24,3 +24,9 @@ bob.py
 synthetic.py
 toy_example.py
 2D_example.py
+test_wasserstein.py
+*.svg
+backup/*
+*.out
+*.o
+*.so

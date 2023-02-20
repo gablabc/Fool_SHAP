@@ -123,24 +123,37 @@ def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max,
 
 
 
-def brute_force(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, significance, time_limit):
+def brute_force(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, significance, time_limit=100):
     """
-    Searches the space of possible attacks via brute-force
+    Search the space of possible attacks via brute-force
 
     Parameters
     --------------------
-        f_D_0: (N_0, 1) array of predictions on D_0
-        f_S_0: (M, 1) array of predictions on S_0
-        f_D_1: (N_1, 1) array of predictions on D_1
-        Phi_S0_zj: (N_1, d) array of Shap coefficients
-        s: int sentitive attribute, List(int) sensitive attributes
-        time_limit: float time limit of the search in seconds
+    f_D_0: (N_0,) array 
+        Predictions on D_0
+    f_S_0: (M,) array
+        Predictions on S_0
+    f_D_1: (N_1,) array 
+        predictions on D_1
+    Phi_S0_zj: (N_1, d) array
+        SHAP coefficients
+    s: int, List(int) 
+        sentitive attribute(s)  
+    significance: float
+        significance level of the detection algorithm  
+    time_limit: float, default=100
+        Time limit for the search in seconds
 
     Returns
     --------------------
-        S_1: (M,) indices of instances in S_1'
+    S_1: (M,) indices of instances in S_1'
     """
-    
+    # Data must be one-dimensional
+    assert f_D_0.ndim == 1
+    assert f_S_0.ndim == 1
+    assert f_D_1.ndim == 1
+
+    # Setup
     N_1 = len(f_D_1)
     M = len(f_S_0)
     idx = np.arange(N_1)
@@ -152,12 +165,13 @@ def brute_force(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, significance, time_limit):
     start = time.time()
     step = 1
     while time.time() - start < time_limit:
-        
+        # Sample uniformly at random
         S_1_candidate = np.random.choice(idx, M)
         abs_Phi_s = np.abs(Phi_S0_zj[S_1_candidate, s].mean())
         f_S_1 = f_D_1[S_1_candidate]
+        # Detect the fraud
         detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance)
-
+        # Keep the solution
         if abs_Phi_s < min_abs_Phi_s and not detection:
             S_1 = S_1_candidate
             min_abs_Phi_s = abs_Phi_s

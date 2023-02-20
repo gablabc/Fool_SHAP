@@ -237,30 +237,68 @@ def multidim_KS(sample1, sample2, significance):
     return detection
 
 
-def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance):
 
-    # Tests conducted by the audit to see if the background and foreground provided
-    # are indeed subsampled uniformly from the data.
+def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.05):
+    """
+    Statistical Test conducted by the Audit to see if the background and foreground 
+    subsamples provided by the Company are indeed chosen uniformly at random 
+    from the data, and not cherry-picked.
+
+    Parameters
+    --------------------
+    f_D_0: (N_0,) array
+        Predictions on D_0
+    f_D_1: (N_1,) array
+        Predictions on D_1
+    f_S_0: (M,) array
+        Predictions on S_0
+    f_S_1: (M,) array
+        Predictions on S_1
+    significance: float, default=0.05
+        Value between in ]0,1[ that represents the accepted rate of false positives.
+
+    Returns
+    --------------------
+    detect: int
+        Value 1 if detected, 0 otherwise
+    """
+
     for distribution, samples in zip([f_D_0, f_D_1],
                                      [f_S_0, f_S_1]):
-        n_samples = len(samples)
+        M = len(samples)
+        # Subsample without cheating
+        unbiased_preds = distribution[np.random.choice(len(distribution), M)]
         # KS test
-        for _ in range(2):
-            unbiased_preds = distribution[np.random.choice(len(distribution), n_samples)]
-            _, p_val = ks_2samp(samples.ravel(), unbiased_preds.ravel())
-            if p_val < significance / 8:
-                return 1
-
+        _, p_val_ks = ks_2samp(samples.ravel(), unbiased_preds.ravel())
         # Wald test
-        W = np.sqrt(n_samples) * (samples.mean() - distribution.mean()) / distribution.std()
-        # Wald detection
-        if np.abs(W) > -norm.ppf(significance/8):
+        W = np.sqrt(M) * (samples.mean() - distribution.mean()) / distribution.std()
+        p_val_wald = 2 * (1 - norm.cdf(np.abs(W)))
+        # Combine the tests
+        if p_val_ks < significance / 4 or p_val_wald < significance / 4:
             return 1
     return 0
 
 
-def confidence_interval(LSV, significance):
-    #assert LSV.shape[1] == LSV.shape[2]
+
+def confidence_interval(LSV, significance=0.05):
+    """
+    Compute the Asymptotic-Normal Confidence Intervals
+    for the Population Global Shapley Value (GSV). This
+    methods comes from Proposition B.1 in the Paper.
+
+    Parameters
+    --------------------
+    LSV: (d, M, M) array
+        Element ijk is the Local Shapley Value `phi_i(f, x^(j), z^(k))`
+    significance: float, default=0.05
+        Confidence level of the interval
+
+    Returns
+    --------------------
+    CI: (d,) array
+        Width of the CI for each feature
+    """
+    assert LSV.shape[1] == LSV.shape[2]
     M = LSV.shape[1]
     alpha = norm.ppf(1 - significance/2)
     sigma = np.sqrt(0.5 * (np.var(np.mean(LSV, axis=1), axis=1) + \
@@ -348,13 +386,35 @@ def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
 
 
 
-def plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="lower right"):
+def plot_CDFs(f_D_0, f_D_1, f_S_0=None, f_S_1=None, legend_loc="lower right"):
+    """
+    Plot the CDFs (Cumulative Distribution Function) for the model
+    predictions on the data subsets D_0, D_1, S_0, S_1. This is how the
+    audit can inspect for disparities in model predictions, and also
+    comparing the subset S_0 with D_0 and S_1 with D_1.
+
+    Parameters
+    --------------------
+    f_D_0: (N_0,) array
+        Predictions on D_0
+    f_D_1: (N_1,) array
+        Predictions on D_1
+    f_S_0: (M,) array, default=None
+        Predictions on S_0. If None then no curve is plotted
+    f_S_1: (M,) array, default=None
+        Predictions on S_1. If None then no curve is plotted
+    legend_loc: strong, default="lower right"
+        Position of the legend in the plot.
+
+    """
     hist_kwargs = {'cumulative':True, 'histtype':'step', 'density':True}
     plt.figure()
     plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_kwargs)
-    plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_kwargs)
+    if f_S_1 is not None:
+        plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_kwargs)
     plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_kwargs)
-    plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_kwargs)
+    if f_S_0 is not None:
+        plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_kwargs)
     plt.xlabel("Output")
     plt.ylabel("CDF")
     plt.legend(framealpha=1, loc=legend_loc)

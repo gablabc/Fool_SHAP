@@ -62,8 +62,8 @@ def get_encoders(df_X, model_name):
     if not len(cat_cols) == 0:
         ordinal_encoder = \
             ColumnTransformer([
-                ('identity', FunctionTransformer(), num_cols),
-                ('ordinal', OrdinalEncoder(), cat_cols)]
+                    ('identity', FunctionTransformer(), num_cols),
+                    ('ordinal', OrdinalEncoder(), cat_cols)]
             ).fit(df_X)
         X = ordinal_encoder.transform(df_X)
         # Reorganize num_cols cat_cols order
@@ -98,12 +98,13 @@ def get_encoders(df_X, model_name):
 
     if unused < 2:
         ohe_preprocessor = ColumnTransformer([
-            ('scaler', scaler, num_cols),
-            ('ohe', ohe, cat_cols)]).fit(X)
+                    ('scaler', scaler, num_cols),
+                    ('ohe', ohe, cat_cols)]).fit(X)
     else:
         ohe_preprocessor = None
 
     return ordinal_encoder, ohe_preprocessor
+
 
 
 def get_data(dataset, model_name, rseed):
@@ -122,11 +123,12 @@ def get_data(dataset, model_name, rseed):
 
     # Splits
     X_split = {key: X.iloc[split_dict[key]].reset_index(drop=True) for key in [
-        "train", "test"]}
+                    "train", "test"]}
     y_split = {key: y.iloc[split_dict[key]].reset_index(drop=True) for key in [
-        "train", "test"]}
+                    "train", "test"]}
 
     return X_split, y_split, features, ordinal_encoder, ohe_encoder
+
 
 
 SENSITIVE_ATTR = {
@@ -144,6 +146,7 @@ PROTECTED_CLASS = {
     'marketing': 'age:30-60',
     'communities': 0
 }
+
 
 
 def get_foreground_background(X_split, dataset, background_size=None, background_seed=None):
@@ -169,8 +172,7 @@ def get_foreground_background(X_split, dataset, background_size=None, background
         mini_batch_idx = np.arange(len(background)).astype(int)
     # Minibatch is subset of background
     else:
-        mini_batch_idx = np.random.choice(
-            range(background.shape[0]), background_size)
+        mini_batch_idx = np.random.choice(range(background.shape[0]), background_size)
     return foreground, background, mini_batch_idx
 
 
@@ -247,9 +249,8 @@ def get_best_cv_scores(search, k):
 
 def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jobs):
     # Try out default HP
-    best_cv_scores = cross_val_score(
-        estimator, X, y, cv=cross_validator, scoring='roc_auc')
-    print("bob")
+    best_cv_scores = cross_val_score(estimator, X, y, cv=cross_validator, scoring='roc_auc')
+    print("Done Evaluating Default Estimator")
 
     # Try out Random Search
     hp_search = RandomizedSearchCV(estimator, param_grid, scoring='roc_auc', n_jobs=n_jobs,
@@ -258,13 +259,13 @@ def get_best_cv_model(X, y, estimator, param_grid, cross_validator, n_iter, n_jo
 
     if np.max(hp_search.cv_results_['mean_test_score']) - 0.0005 > best_cv_scores.mean():
         print("Use fine-tuned values")
-        best_cv_scores = get_best_cv_scores(
-            hp_search, cross_validator.n_splits)
+        best_cv_scores = get_best_cv_scores(hp_search, cross_validator.n_splits)
         model = hp_search.best_estimator_
     else:
         print("Use default values")
         model = estimator.fit(X, y)
     return model, best_cv_scores
+
 
 
 def multidim_KS(sample1, sample2, significance):
@@ -278,6 +279,7 @@ def multidim_KS(sample1, sample2, significance):
             detection = 1
             break
     return detection
+
 
 
 def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.05):
@@ -311,20 +313,19 @@ def audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.05):
         for _ in range(2):
             M = len(samples)
             # Subsample without cheating
-            unbiased_preds = distribution[np.random.choice(
-                len(distribution), M)]
-            _, p_val_ks = ks_2samp(samples.ravel(), unbiased_preds.ravel())
+            unbiased_preds = distribution[np.random.choice(len(distribution), M)]
+            _, p_val_ks = ks_2samp(samples, unbiased_preds)
             if p_val_ks < significance / 8:
                 return 1
 
         # Wald test
-        W = np.sqrt(M) * (samples.mean() - distribution.mean()) / \
-            distribution.std()
+        W = np.sqrt(M) * (samples.mean() - distribution.mean()) / distribution.std()
         p_val_wald = 2 * (1 - norm.cdf(np.abs(W)))
         # Combine the tests
         if p_val_wald < significance / 4:
             return 1
     return 0
+
 
 
 def confidence_interval(LSV, significance=0.05):
@@ -423,8 +424,7 @@ def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
 
     # Find the shared library, the path depends on the platform and Python version
     project_root = os.path.dirname(__file__).split('src')[0]
-    libfile = glob.glob(os.path.join(
-        project_root, 'build', '*', 'treeshap*.so'))[0]
+    libfile = glob.glob(os.path.join(project_root, 'build', '*', 'treeshap*.so'))[0]
 
     # Open the shared library
     mylib = ctypes.CDLL(libfile)

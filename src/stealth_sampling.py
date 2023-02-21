@@ -13,18 +13,21 @@ def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.
 
     Parameters
     --------------------
-        f_D_1: (N_1, 1) array of predictions on D_1
-        Phi_S0_zj: (N_1,) array of Shap coefficients for sensitive attribute. 
-            If the shape is (N_1, s) with s>1 different sensitive attributes, 
-            then the weights will be computed to reduce all of Shap values.
-        regul_lambda: float that controls the trade-off between manipulation
-            and proximity to the data
+    f_D_1: (N_1,) array
+        Predictions on D_1
+    Phi_S0_zj: (N_1,) array
+        SHAP coefficients for sensitive attribute. 
+        If the shape is (N_1, s) with s>1 different sensitive attributes, 
+        then the weights will be computed to reduce all of SHAP values.
+    regul_lambda: float, default=10
+        Controls the trade-off between manipulation and proximity to the data
 
     Returns
     --------------------
-        weights: (N_1, ) array of non-uniform weights on D_1
+    weights: (N_1, ) array of non-uniform weights on D_1
     """
     N_1 = len(f_D_1)
+    f_D_1 = f_D_1.reshape((-1, 1))
     while True:
         # Perturb the data a bit
         X = f_D_1 + 1e-5 * np.random.randn(*f_D_1.shape)
@@ -73,18 +76,18 @@ def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max,
 
     Parameters
     --------------------
-        f_D_0: (N_0, 1) array of predictions on D_0
-        f_S_0: (M, 1) array of predictions on S_0
-        f_D_1: (N_1, 1) array of predictions on D_1
-        Phi_S0_zj: (N_1, d) array of Shap coefficients
-        s: int sentitive attribute, List(int) sensitive attributes
+    f_D_0: (N_0,) array of predictions on D_0
+    f_S_0: (M,) array of predictions on S_0
+    f_D_1: (N_1,) array of predictions on D_1
+    Phi_S0_zj: (N_1, d) array of Shap coefficients
+    s: int sentitive attribute, List(int) sensitive attributes
 
     Returns
     --------------------
-        lambd_space: array of all N_e lambda values explored
-        weights: (N_e, N_1) array of non-uniform weights on D_1
-        biased_shaps: (N_e, 100, d) array of Shapley values
-        detections: (N_e,) array with number of detections out of 100 runs
+    lambd_space: array of all N_e lambda values explored
+    weights: (N_e, N_1) array of non-uniform weights on D_1
+    biased_shaps: (N_e, 100, d) array of Shapley values
+    detections: (N_e,) array with number of detections out of 100 runs
     """
     weights = []
     biased_shaps = []

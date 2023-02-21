@@ -186,13 +186,13 @@ genetic_shap_values = alg.result_explanation['changed']
 
 # %%
 # Detect the manipulation
-f_S_1 = model.predict_proba(alg.S_1_prime)[:, [1]]
+f_S_1 = model.predict_proba(alg.S_1_prime)[:, 1]
 plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="center")
 plt.savefig(os.path.join("Images", "toy", "genetic_CDFs.pdf"), bbox_inches='tight')
 # plt.show()
 
 # Detection algorithm
-detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
+detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1)
 print(f"Audit Detection : {detection==1}")
 
 # %%
@@ -264,11 +264,11 @@ f_S_1 = f_D_1[biased_idx]
 # %%
 # Observe the CDFs
 plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1, legend_loc="center")
-# plt.savefig(os.path.join("Images", "toy", "fool_CDFs.pdf"), bbox_inches='tight')
+plt.savefig(os.path.join("Images", "toy", "fool_CDFs.pdf"), bbox_inches='tight')
 plt.show()
 
 # Detection algorithm
-detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
+detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1)
 print(f"Audit Detection : {detection==1}")
 
 # %%
@@ -296,7 +296,7 @@ df = pd.DataFrame(np.column_stack((honest_shap_values,
 df.plot.barh(capsize=4)
 plt.plot([0, 0], plt.gca().get_ylim(), "k-")
 plt.xlabel('GSV')
-# plt.savefig(os.path.join("Images", "toy", "attacks_3.pdf"), bbox_inches='tight')
+plt.savefig(os.path.join("Images", "toy", "attacks_3.pdf"), bbox_inches='tight')
 plt.show()
 
 # %%

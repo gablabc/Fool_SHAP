@@ -7,15 +7,16 @@ from sklearn.ensemble import RandomForestClassifier
 import xgboost
 import numpy as np
 
-import sys
+import sys, os
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
+sys.path.append(os.path.abspath(".."))
 import shap
 from shap.maskers import Independent
 
-from utils import tree_shap
+from src.utils import tree_shap
 
 # The company has private access to a dataset
-X,y = shap.datasets.adult()
+X, y = shap.datasets.adult()
 X.columns = ["Age", "Workclass", "EducationNum", "MaritalStatus", "Occupation",
              "Relationship", "Race", "Sex", "CapitalGain", "CapitalLoss",
              "HoursPerWeek", "Country"]
@@ -57,9 +58,9 @@ get_logits = lambda x :model.predict(x, output_margin=True)
 
 # For XGB we explain the logit
 D_0 = X[X["Sex"]==0]
-f_D_0 = get_logits(D_0).reshape((-1, 1))
+f_D_0 = get_logits(D_0)
 D_1= X[X["Sex"]==1]
-f_D_0 = get_logits(D_1).reshape((-1, 1))
+f_D_0 = get_logits(D_1)
 
 # Subsample the data
 S_0 = D_0.iloc[np.arange(50)]

@@ -9,7 +9,7 @@ import os
 from sklearn.metrics import roc_auc_score
 
 # Local imports
-from utils import get_data, load_model, get_foreground_background
+from src.utils import get_data, load_model, get_foreground_background
 
 
 
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Parser initialization
     parser = argparse.ArgumentParser(description='Script for training models')
-    parser.add_argument('--dataset', type=str, default='marketing', help='Dataset: adult_income, compas, default_credit, marketing')
+    parser.add_argument('--dataset', type=str, default='communities', help='Dataset: adult_income, compas, default_credit, marketing')
     parser.add_argument('--model', type=str, default='rf', help='Model: mlp, rf, gbt, xgb')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     args = parser.parse_args()
@@ -33,9 +33,9 @@ if __name__ == "__main__":
     y = y_split["test"]
 
     # Process the data
-    if ordinal_encoder is not None:
-        X = ordinal_encoder.transform(X)
-        y = y.to_numpy()
+    y = y.to_numpy()
+    X = ordinal_encoder.transform(X)
+
     # Some model may perhaps not require OHE
     if ohe_encoder is not None:
         X = ohe_encoder.transform(X)
@@ -55,9 +55,8 @@ if __name__ == "__main__":
     D_0, D_1 = get_foreground_background(X_split, args.dataset)
 
     # Ordinally encode B and F
-    if ordinal_encoder is not None:
-        D_0 = ordinal_encoder.transform(D_0)
-        D_1 = ordinal_encoder.transform(D_1)
+    D_0 = ordinal_encoder.transform(D_0)
+    D_1 = ordinal_encoder.transform(D_1)
     
     if ohe_encoder is not None:
         D_0 = ohe_encoder.transform(D_0)

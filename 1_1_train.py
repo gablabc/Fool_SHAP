@@ -7,8 +7,8 @@ import multiprocessing
 from sklearn.model_selection import StratifiedShuffleSplit
 
 # Local imports
-from utils import get_data, MODELS
-from utils import get_best_cv_model, get_hp_grid, save_model
+from src.utils import get_data, MODELS
+from src.utils import get_best_cv_model, get_hp_grid, save_model
 
 
 
@@ -33,8 +33,7 @@ if __name__ == "__main__":
 
     # Process the data
     y = y.to_numpy()
-    if ordinal_encoder is not None:
-        X = ordinal_encoder.transform(X)
+    X = ordinal_encoder.transform(X)
     
     # Some model may perhaps not require OHE
     if ohe_encoder is not None:

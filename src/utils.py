@@ -7,6 +7,7 @@ import ctypes
 import glob
 from scipy.stats import norm, ks_2samp
 
+from sklearn.base import TransformerMixin
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
@@ -24,15 +25,40 @@ from sklearn.ensemble import GradientBoostingClassifier
 import xgboost as xgb  # eXtreme Gradient Boosting Tree (xGBTree)
 
 
+class DummyEncoder(TransformerMixin):
+    """ 
+    A dummy ordinal encoder that simply maps a 
+    DataFrame to a C-Contiguous numpy array 
+    """
+    def __init__(self):
+        pass
+
+    def fit(self, X):
+        return self
+
+    def transform(self, X):
+        return np.ascontiguousarray(X)
+
+
+
 def get_encoders(df_X, model_name):
-    """ Fit a ordinal and ohe encoders on the whole dataset """
+    """ 
+    Fit a ordinal and ohe encoders on the whole dataset 
+    
+    Any cat features?
+        Will return two encoders
+    
+    No cat features?
+        Will return a ordinal_encoder that simply
+    
+    """
 
     # Categorical features ?
     is_cat = np.array([dt.kind == 'O' for dt in df_X.dtypes])
     cat_cols = list(df_X.columns.values[is_cat])
     num_cols = list(df_X.columns.values[~is_cat])
 
-    # Ordinal encoding is required for SHAP
+    ###### Ordinal Encoding ######
     if not len(cat_cols) == 0:
         ordinal_encoder = \
             ColumnTransformer([
@@ -45,26 +71,37 @@ def get_encoders(df_X, model_name):
         num_cols = list(range(n_num))
         cat_cols = [i + n_num for i in range(len(cat_cols))]
     else:
-        ordinal_encoder = None
-        X = df_X
+        ordinal_encoder = DummyEncoder()
+        X = ordinal_encoder.fit_transform(df_X)
+    # At this point X is always a contiguous np.array
+    assert type(X) == np.ndarray
+    assert X.flags['C_CONTIGUOUS']
 
+
+    ###### One-Hot-Encoding ######
+    unused = 0
     # Some models require rescaling numerical features
     if model_name == "mlp":
         scaler = StandardScaler()
     # Otherwise Identity map
     else:
         scaler = FunctionTransformer()
+        unused += 1
 
-    # One Hot Encode features
+    # Any categorical features
     if not len(cat_cols) == 0:
         ohe = OneHotEncoder(sparse=False)
     # Or not ...
     else:
         ohe = FunctionTransformer()
+        unused += 1
 
-    ohe_preprocessor = ColumnTransformer([
-        ('scaler', scaler, num_cols),
-        ('ohe', ohe, cat_cols)]).fit(X)
+    if unused < 2:
+        ohe_preprocessor = ColumnTransformer([
+            ('scaler', scaler, num_cols),
+            ('ohe', ohe, cat_cols)]).fit(X)
+    else:
+        ohe_preprocessor = None
 
     return ordinal_encoder, ohe_preprocessor
 

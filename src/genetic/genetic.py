@@ -81,6 +81,7 @@ class GeneticAlgorithm(Algorithm):
             self.fresh = False
         
         pbar = tqdm.tqdm(range(1, max_iter + 1), disable=not verbose)
+        stop_iter = self.params["stop_iter"]
         for _ in pbar:
             self.crossover()
             self.mutation()
@@ -92,14 +93,11 @@ class GeneticAlgorithm(Algorithm):
             pbar.set_description("Iter: %s || Loss: %s" % (self.iter, self.iter_log['loss'][-1]))
             if check_early_stopping(self.iter_log, self.params['epsilon'], self.params['stop_iter']):
                 break
-            if self.iter >= 10 and np.sum(self.iter_log['detection'][-10:]) == 10:
+            # Stop if we have been detected for the last ''stop_iter'' iterations
+            if self.iter >= stop_iter and \
+                np.sum(self.iter_log['detection'][-stop_iter:]) == stop_iter:
                 break
 
-        # self.result_data = pd.concat((self.S_1, self.S_1_prime))\
-        #     .reset_index(drop=True)\
-        #     .rename(index={'0': 'original', '1': 'changed'})\
-        #     .assign(dataset=pd.Series(['original', 'changed'])\
-        #                     .repeat(self.M).reset_index(drop=True))
 
     def fool_aim(
             self,
@@ -122,23 +120,24 @@ class GeneticAlgorithm(Algorithm):
     #:# inside
     
     def mutation(self, adjust=1):   
-        _temp_pop_count = self.S_1_pop.shape[0]         
-        _theta = np.random.normal(
-            loc=0,
-            scale=self._X_std * adjust,
-            size=(_temp_pop_count, self.M, self.d)
-        )
-        # preserve zeros
-        _theta = np.where(self.S_1_pop == 0, 0, _theta)
-        # column mask made with the probability 
-        _mask = np.random.binomial(
-            n=1,
-            p=self.params['mutation_prob'], 
-            size=(_temp_pop_count, 1, self.d)
-        )
-        self.S_1_pop += _theta * _mask
+        _temp_pop_count = self.S_1_pop.shape[0]
+        if not self.params['mutation_with_constraints']:      
+            _theta = np.random.normal(
+                loc=0,
+                scale=self._X_std * adjust,
+                size=(_temp_pop_count, self.M, self.d)
+            )
+            # preserve zeros
+            _theta = np.where(self.S_1_pop == 0, 0, _theta)
+            # column mask made with the probability 
+            _mask = np.random.binomial(
+                n=1,
+                p=self.params['mutation_prob'], 
+                size=(_temp_pop_count, 1, self.d)
+            )
+            self.S_1_pop += _theta * _mask
         
-        if self.params['mutation_with_constraints']:
+        else:
             # Add min/max constraints for the variable distribution
             # this feature may lead to a much longer computation time
             S_1_pop_long = self.S_1_pop.reshape(_temp_pop_count * self.M, self.d)

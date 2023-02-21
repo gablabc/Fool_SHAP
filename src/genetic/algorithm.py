@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
-from functools import partial
 import xgboost
 
 from .explainer import Explainer
@@ -22,6 +20,7 @@ class Algorithm:
         ):
 
         self.explainer = Explainer(model)
+        # Convert data to numpy arrays
         if isinstance(S_0, pd.DataFrame):
             self.feature_names = S_0.columns
             self.S_0 = np.ascontiguousarray(S_0.to_numpy())
@@ -65,7 +64,8 @@ class Algorithm:
         if random_state is not None:
             np.random.seed(random_state)
 
-        self.result_explanation['original'] = self.explainer.GSV(self.S_0, self.S_1, self.ordinal_encoder, self.ohe_encoder)
+        self.result_explanation['original'] = \
+            self.explainer.GSV(self.S_0, self.S_1, self.ordinal_encoder, self.ohe_encoder)
         self.result_explanation['changed'] = self.result_explanation['original']
         self.best_obj = np.abs(self.result_explanation['changed'][self.s_idx])
 
@@ -112,17 +112,17 @@ class Algorithm:
     def detector(self, S_1):
         # This is because when no ordinal_encoder is used
         # The ohe expects DataFrame
-        if self.ordinal_encoder is None:
+        if self.feature_names is not None:
             S_1 = pd.DataFrame(S_1, columns=self.feature_names)
         if isinstance(self.explainer.model, xgboost.XGBClassifier):
             if self.ohe_encoder is None:
-                f_S_1 = self.explainer.model.predict(S_1, output_margin=True).reshape((-1, 1))
+                f_S_1 = self.explainer.model.predict(S_1, output_margin=True)
             else:
-                f_S_1 = self.explainer.model.predict(self.ohe_encoder.transform(S_1), output_margin=True).reshape((-1, 1))
+                f_S_1 = self.explainer.model.predict(self.ohe_encoder.transform(S_1), output_margin=True)
         else:
             if self.ohe_encoder is None:
-                f_S_1 = self.explainer.model.predict_proba(S_1)[:, [1]]
+                f_S_1 = self.explainer.model.predict_proba(S_1)[:, 1]
             else:
-                f_S_1 = self.explainer.model.predict_proba(self.ohe_encoder.transform(S_1))[:, [1]]
+                f_S_1 = self.explainer.model.predict_proba(self.ohe_encoder.transform(S_1))[:, 1]
         
-        return audit_detection(self.f_D_0, self.f_D_1, self.f_S_0, f_S_1, significance=0.05)
+        return audit_detection(self.f_D_0, self.f_D_1, self.f_S_0, f_S_1)

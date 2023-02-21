@@ -1,22 +1,16 @@
 """ 
-The second part of the attack is to compute the non-uniform weights
-over the background dataset D_1. To do so, a MCF is solved to minimize the
-amplitude of the SHAP value of a sensitive attribute while ensuring that the
-non-uniform distribution remains close to the uniform on D_1
+After computing the non-uniform weights, we compare with the
+brute-force method, which is only allowed to run for the same
+amount of time it took to run Fool SHAP.
 """
 import argparse
 import numpy as np
 import os
-
-import matplotlib.pyplot as plt
-import matplotlib as mp
-mp.rcParams['text.usetex'] = True
-mp.rcParams['font.size'] = 21
-mp.rcParams['font.family'] = 'serif'
+from sklearn.compose import ColumnTransformer
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
-from stealth_sampling import brute_force
+from src.utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
+from src.stealth_sampling import brute_force
 
 
 if __name__ == "__main__":
@@ -28,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument('--explainer', type=str, default='exact', help='exact or tree')
     parser.add_argument('--rseed', type=int, default=0, help='Random seed for the data splitting')
     parser.add_argument('--background_seed', type=int, default=0, help='Seed of background minibatch')
-    parser.add_argument('--background_size', type=int, default=-1, help='Size of background minibatch, -1 means all')
+    parser.add_argument('--background_size', type=int, default=2000, help='Size of background minibatch, -1 means all')
     parser.add_argument('--time_multiplier', type=int, default=1, help='How much longer than computing the weights')
     args = parser.parse_args()
 
@@ -42,10 +36,10 @@ if __name__ == "__main__":
                                                     args.background_size, args.background_seed)
 
     # OHE+Ordinally encode B and F
-    if ordinal_encoder is not None:
-        D_0 = ordinal_encoder.transform(D_0)
-        D_1 = ordinal_encoder.transform(D_1)
-        # Permute features to match ordinal encoding
+    D_0 = ordinal_encoder.transform(D_0)
+    D_1 = ordinal_encoder.transform(D_1)
+    # Permute features to match ordinal encoding
+    if isinstance(ordinal_encoder, ColumnTransformer):
         numerical_features = ordinal_encoder.transformers_[0][2]
         categorical_features = ordinal_encoder.transformers_[1][2] 
         features = numerical_features + categorical_features
@@ -62,15 +56,15 @@ if __name__ == "__main__":
     # All background/foreground predictions
     if args.explainer == "tree" and args.model == "xgb":
         # When explaining Boosted trees with TreeSHAP, we explain the logit
-        f_D_0 = model.predict(D_0, output_margin=True).reshape((-1, 1))
+        f_D_0 = model.predict(D_0, output_margin=True)
         f_S_0 = f_D_0[:200]
-        f_D_1 = model.predict(D_1, output_margin=True).reshape((-1, 1))
+        f_D_1 = model.predict(D_1, output_margin=True)
         f_D_1_B = f_D_1[mini_batch_idx]
     else:
         # We explain the probability of class 1
-        f_D_0 = model.predict_proba(D_0)[:, [1]]
+        f_D_0 = model.predict_proba(D_0)[:, 1]
         f_S_0 = f_D_0[:200]
-        f_D_1 = model.predict_proba(D_1)[:, [1]]
+        f_D_1 = model.predict_proba(D_1)[:, 1]
         f_D_1_B = f_D_1[mini_batch_idx]
 
     # Get the sensitive feature
@@ -97,7 +91,7 @@ if __name__ == "__main__":
     with open(os.path.join(weights_path, tmp_filename), "r") as file:
         time_limit = float(file.read())
 
-    significance = 0.01
+    significance = 0.05
     S_1_p_idx = brute_force(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, significance, args.time_multiplier * time_limit)
     S_1_p_idx = mini_batch_idx[S_1_p_idx]
 

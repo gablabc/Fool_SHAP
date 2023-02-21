@@ -7,12 +7,12 @@ will be stored and used later in the MCF
 import shap
 from shap.maskers import Independent
 import argparse
-import numpy as np
 import os
+import numpy as np
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model
-from utils import tree_shap
+from src.utils import get_data, get_foreground_background, load_model
+from src.utils import tree_shap
 
 
 
@@ -40,13 +40,9 @@ if __name__ == "__main__":
     #print(len(mini_batch_idx))
     #print(mini_batch_idx)
 
-    # Ordinally encoder
-    if ordinal_encoder is not None:
-        D_1 = ordinal_encoder.transform(D_1)
-        D_0 = ordinal_encoder.transform(D_0)
-    else:
-        D_1 = D_1.to_numpy()
-        D_0 = D_0.to_numpy()
+    # Ordinal Encoder
+    D_1 = ordinal_encoder.transform(D_1)
+    D_0 = ordinal_encoder.transform(D_0)
 
     # Subsets of background and foreground
     M = 200

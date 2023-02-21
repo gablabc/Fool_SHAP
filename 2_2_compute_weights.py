@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import time
 
+from sklearn.compose import ColumnTransformer
 import matplotlib.pyplot as plt
 import matplotlib as mp
 mp.rcParams['text.usetex'] = True
@@ -18,8 +19,8 @@ mp.rcParams['font.size'] = 21
 mp.rcParams['font.family'] = 'serif'
 
 # Local imports
-from utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
-from stealth_sampling import explore_attack
+from src.utils import get_data, get_foreground_background, load_model, SENSITIVE_ATTR
+from src.stealth_sampling import explore_attack
 
 
 if __name__ == "__main__":
@@ -47,10 +48,10 @@ if __name__ == "__main__":
                                                     args.background_size, args.background_seed)
 
     # OHE+Ordinally encode B and F
-    if ordinal_encoder is not None:
-        D_0 = ordinal_encoder.transform(D_0)
-        D_1 = ordinal_encoder.transform(D_1)
-        # Permute features to match ordinal encoding
+    D_0 = ordinal_encoder.transform(D_0)
+    D_1 = ordinal_encoder.transform(D_1)
+    # Permute features to match ordinal encoding
+    if isinstance(ordinal_encoder, ColumnTransformer):
         numerical_features = ordinal_encoder.transformers_[0][2]
         categorical_features = ordinal_encoder.transformers_[1][2] 
         features = numerical_features + categorical_features
@@ -67,15 +68,15 @@ if __name__ == "__main__":
     # All background/foreground predictions
     if args.explainer == "tree" and args.model == "xgb":
         # When explaining Boosted trees with TreeSHAP, we explain the logit
-        f_D_0 = model.predict(D_0, output_margin=True).reshape((-1, 1))
+        f_D_0 = model.predict(D_0, output_margin=True)
         f_S_0 = f_D_0[:200]
-        f_D_1 = model.predict(D_1, output_margin=True).reshape((-1, 1))
+        f_D_1 = model.predict(D_1, output_margin=True)
         f_D_1_B = f_D_1[mini_batch_idx]
     else:
         # We explain the probability of class 1
-        f_D_0 = model.predict_proba(D_0)[:, [1]]
+        f_D_0 = model.predict_proba(D_0)[:, 1]
         f_S_0 = f_D_0[:200]
-        f_D_1 = model.predict_proba(D_1)[:, [1]]
+        f_D_1 = model.predict_proba(D_1)[:, 1]
         f_D_1_B = f_D_1[mini_batch_idx]
 
     # Get the sensitive feature
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     #                                       Experiment                                         #
     ############################################################################################
 
-    significance = 0.01
+    significance = 0.05
     start = time.time()
     lambd_space, weights, biased_shaps, detections = \
                 explore_attack(f_D_0, f_S_0, f_D_1_B, Phi_S0_zj, s_idx, 
@@ -129,6 +130,7 @@ if __name__ == "__main__":
     print(f"Reduction factor: {(init_abs_val - lowest_abs_value) / init_abs_val:.2f}")
     print(f"Success of the attack: {success}")
     
+    
     ############################################################################################
     #                                     Save Results                                         #
     ############################################################################################
@@ -141,7 +143,7 @@ if __name__ == "__main__":
         tmp_filename += f"B_size_{args.background_size}_seed_{args.background_seed}"
         
         # Save the optimal weights
-        # np.save(os.path.join(weights_path, tmp_filename), np.column_stack((mini_batch_idx, best_weights)) )
+        np.save(os.path.join(weights_path, tmp_filename), np.column_stack((mini_batch_idx, best_weights)) )
         
     # Save the elapse time to cmpute the attack
     with open(os.path.join(weights_path, tmp_filename + ".txt"), "w") as file:
@@ -194,3 +196,4 @@ if __name__ == "__main__":
     plt.ylabel(r"Detection Rate $(\%)$")
     plt.savefig(os.path.join(figure_path, 
                 f"detection_{tmp_filename}.pdf"), bbox_inches='tight')
+    

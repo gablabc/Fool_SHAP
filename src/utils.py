@@ -362,14 +362,12 @@ def tree_shap(model, D_0, D_1, ordinal_encoder=None, ohe_encoder=None):
     --------------------
     model: tree-based estimator
         Model to explain
-    D_0: (N_0, d) array
-        blabla
-    D_0: (N_0, d) array
-        blabla
+    D_0: (N_0, d) np.ndarray
+        We assume this is the output of the ordinal_encoder
+    D_1: (N_1, d) np.ndarray
+        We assume this is the output of the ordinal_encoder
     ordinal_encoder: sklearn.OrdinalEncoder, default=None
-        blabla
     ohe_encoder: sklearn.OneHotEncoder, default=None
-        blabla
 
     Returns
     --------------------

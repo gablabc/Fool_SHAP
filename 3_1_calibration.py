@@ -30,9 +30,8 @@ if __name__ == "__main__":
         D_0, D_1 = get_foreground_background(X_split, args.dataset)
         
         # Ordinally encode B and F
-        if ordinal_encoder is not None:
-            D_0 = ordinal_encoder.transform(D_0)
-            D_1 = ordinal_encoder.transform(D_1)
+        D_0 = ordinal_encoder.transform(D_0)
+        D_1 = ordinal_encoder.transform(D_1)
     
         if ohe_encoder is not None:
             D_0 = ohe_encoder.transform(D_0)
@@ -43,14 +42,14 @@ if __name__ == "__main__":
         model = load_model(args.model, "models", tmp_filename)
 
         # All background/foreground predictions
-        f_D_0 = model.predict_proba(D_0)[:, [1]]
-        f_D_1 = model.predict_proba(D_1)[:, [1]]
+        f_D_0 = model.predict_proba(D_0)[:, 1]
+        f_D_1 = model.predict_proba(D_1)[:, 1]
         M = 200
 
         for _ in range(1000):
             f_S_0 = f_D_0[np.random.choice(len(f_D_0), M)]
             f_S_1 = f_D_1[np.random.choice(len(f_D_1), M)]
             
-            false_positive_rates += audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, 0.05)
+            false_positive_rates += audit_detection(f_D_0, f_D_1, f_S_0, f_S_1)
     false_positive_rates /= 5000
     print(100 * false_positive_rates)

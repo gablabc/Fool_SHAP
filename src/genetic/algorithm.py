@@ -22,7 +22,6 @@ class Algorithm:
         self.explainer = Explainer(model)
         # Convert data to numpy arrays
         if isinstance(S_0, pd.DataFrame):
-            self.feature_names = S_0.columns
             self.S_0 = np.ascontiguousarray(S_0.to_numpy())
         else:
             self.S_0 = S_0
@@ -36,8 +35,16 @@ class Algorithm:
         self.f_D_1 = f_D_1
         self.s_idx = s_idx
         self.M, self.d = self.S_0.shape
+        if ordinal_encoder is None and ohe_encoder is not None:
+            raise Exception("If a OneHotEncoder is passed, then an "+\
+                            "Ordinal Encoder must also be passed")
         self.ordinal_encoder = ordinal_encoder
         self.ohe_encoder = ohe_encoder
+        # mapper to apply to X before feeding to the model
+        if ohe_encoder is not None:
+            self.mapper = ohe_encoder.transform
+        else:
+            self.mapper = lambda x: x
 
         if constant is not None:
             if len(constant) == 0:
@@ -110,19 +117,9 @@ class Algorithm:
 
     # New signature self.detector(S_1) -> {True, False}
     def detector(self, S_1):
-        # This is because when no ordinal_encoder is used
-        # The ohe expects DataFrame
-        if self.feature_names is not None:
-            S_1 = pd.DataFrame(S_1, columns=self.feature_names)
         if isinstance(self.explainer.model, xgboost.XGBClassifier):
-            if self.ohe_encoder is None:
-                f_S_1 = self.explainer.model.predict(S_1, output_margin=True)
-            else:
-                f_S_1 = self.explainer.model.predict(self.ohe_encoder.transform(S_1), output_margin=True)
+            f_S_1 = self.explainer.model.predict(self.mapper(S_1), output_margin=True)
         else:
-            if self.ohe_encoder is None:
-                f_S_1 = self.explainer.model.predict_proba(S_1)[:, 1]
-            else:
-                f_S_1 = self.explainer.model.predict_proba(self.ohe_encoder.transform(S_1))[:, 1]
+            f_S_1 = self.explainer.model.predict_proba(self.mapper(S_1))[:, 1]
         
         return audit_detection(self.f_D_0, self.f_D_1, self.f_S_0, f_S_1)

@@ -205,7 +205,7 @@ if __name__ == "__main__":
     # Sample Background distribution
     biased_idx = np.random.choice(N_1, M, p=weights/np.sum(weights))
     f_S_1 = f_D_1[biased_idx]
-    detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1)
+    detection = audit_detection(f_D_0, f_D_1, f_S_0, f_S_1, significance=0.01)
     print(f"Detection fo the fraud : {detection == 1}")
 
 
@@ -254,36 +254,36 @@ if __name__ == "__main__":
             file.write(f"{init_abs:.6f},{brute_abs:.6f},{final_abs:.6f}\n")
 
 
-        # # Where to save figure
-        # figure_path = os.path.join(f"Images/{args.dataset}/{args.model}/")
-        # tmp_filename = f"rseed_{args.rseed}_B_size_{args.background_size}"
+        # Where to save figure
+        figure_path = os.path.join(f"Images/{args.dataset}/{args.model}/")
+        tmp_filename = f"rseed_{args.rseed}_B_size_{args.background_size}"
 
-        # # Plot the CDFs
-        # hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-        # plt.figure()
-        # plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
-        # plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
-        # plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
-        # plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
-        # plt.xlabel("Output")
-        # plt.ylabel("CDF")
-        # plt.legend(framealpha=1, loc=args.loc)
-        # plt.savefig(os.path.join(figure_path, f"CDFs_{tmp_filename}.pdf"), bbox_inches='tight')
+        # Plot the CDFs
+        hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
+        plt.figure()
+        plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
+        plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
+        plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
+        plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
+        plt.xlabel("Output")
+        plt.ylabel("CDF")
+        plt.legend(framealpha=1, loc=args.loc)
+        plt.savefig(os.path.join(figure_path, f"CDFs_{tmp_filename}.pdf"), bbox_inches='tight')
 
 
-        # # Sort the features
-        # sorted_features_idx = np.argsort(honest_shap_values)
+        # Sort the features
+        sorted_features_idx = np.argsort(honest_shap_values)
 
-        # # Plot Feature Attributions
-        # df = pd.DataFrame(np.column_stack((honest_shap_values[sorted_features_idx], 
-        #                                 biased_shap_values[sorted_features_idx])),
-        #                 columns=["Original", "Manipulated"],
-        #                 index=[features[i] for i in sorted_features_idx])
-        # if df.shape[0] > 22:
-        #     df = df.iloc[:22]
-        # df.plot.barh(xerr=np.column_stack((CI[sorted_features_idx[:22]],
-        #                                 CI_b[sorted_features_idx[:22]])).T, 
-        #             capsize=2, width=0.75)
-        # plt.plot([0, 0], plt.gca().get_ylim(), "k-")
-        # plt.xlabel('Shap value')
-        # plt.savefig(os.path.join(figure_path, f"attack_{tmp_filename}.pdf"), bbox_inches='tight')
+        # Plot Feature Attributions
+        df = pd.DataFrame(np.column_stack((honest_shap_values[sorted_features_idx], 
+                                        biased_shap_values[sorted_features_idx])),
+                        columns=["Original", "Manipulated"],
+                        index=[features[i] for i in sorted_features_idx])
+        if df.shape[0] > 22:
+            df = df.iloc[:22]
+        df.plot.barh(xerr=np.column_stack((CI[sorted_features_idx[:22]],
+                                        CI_b[sorted_features_idx[:22]])).T, 
+                    capsize=2, width=0.75)
+        plt.plot([0, 0], plt.gca().get_ylim(), "k-")
+        plt.xlabel('Shap value')
+        plt.savefig(os.path.join(figure_path, f"attack_{tmp_filename}.pdf"), bbox_inches='tight')

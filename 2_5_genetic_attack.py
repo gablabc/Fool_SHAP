@@ -87,5 +87,4 @@ if __name__ == "__main__":
     pd.DataFrame(alg.iter_log).to_csv(results_file, index=False)
     
     # Save final dataset
-    np.save(os.path.join("attacks", "Genetic", tmp_filename), 
-                            alg.result_explanation['changed'])
+    np.save(os.path.join("attacks", "Genetic", tmp_filename), alg.S_1_prime)

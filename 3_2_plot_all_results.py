@@ -27,14 +27,15 @@ def get_cdf(data):
 
 if __name__ == "__main__":
 
+    # Brute-Force and FoolSHAP results
     df = pd.read_csv(os.path.join("attacks", "results.csv"))
     df["rank_diff"] = df["final_rank"] - df["init_rank"]
     df.loc[df["rank_diff"] > 8, "rank_diff"] = 9
     df["brute_abs_diff"] = 100 * (df["init_abs"] - df["brute_abs"]) / df["init_abs"]
     df["fool_abs_diff"] = 100 * (df["init_abs"] - df["final_abs"]) / df["init_abs"]
-    grouped = df.groupby('dataset')
+    # grouped = df.groupby('dataset')
 
-    # genetic results
+    # Genetic Results
     df2 = []
     for model in ["rf", "xgb"]:
         for dataset in ["adult_income", "communities", "marketing", "compas"]:
@@ -42,10 +43,13 @@ if __name__ == "__main__":
                 filename = os.path.join("attacks", "Genetic", f"{model}_{dataset}_rseed_{rseed}.csv")
                 if os.path.exists(filename):
                     df_genetic = pd.read_csv(filename)
+                    # The original SHAP value is the 0th iteration of the algorithm
                     ref_abs = df_genetic.loc[0, "loss"]
+                    # Largest reduction while being undetected
                     best_abs = df_genetic[df_genetic["detection"]==0]["loss"].min()
                     df2.append([dataset, 100 * (ref_abs - best_abs) / ref_abs, "Genetic"])
     df2 = pd.DataFrame(df2, columns=["dataset", "diff", "method"])
+    
     # ECDF
     # plt.figure()
     # for i, (name, group) in enumerate(grouped):
@@ -72,7 +76,7 @@ if __name__ == "__main__":
     # plt.legend(loc="upper left", bbox_to_anchor=(0.53,1), fontsize=15, framealpha=0.75)
     # plt.savefig(os.path.join("Images", f"rank_results.pdf"), bbox_inches='tight')
 
-
+    # Aggregate all results
     df_copy = [ pd.DataFrame(np.column_stack((df["dataset"], df["brute_abs_diff"], len(df)*["Brute"])),
                             columns=["dataset", "diff", "method"]),
                 pd.DataFrame(np.column_stack((df["dataset"], df["fool_abs_diff"], len(df)*["Ours"])),

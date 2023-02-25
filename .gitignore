@@ -30,3 +30,4 @@ backup/*
 *.out
 *.o
 *.so
+*.tar.gz

@@ -1,3 +1,4 @@
+""" Tutorial of Fool SHAP on the Adult-Income dataset"""
 # %% 
 # Imports
 import xgboost
@@ -10,6 +11,7 @@ rc('font',**{'family':'sans-serif', 'sans-serif':['Computer Modern Sans Serif'],
 rc('text', usetex=True)
 
 import sys
+# Path to your local fork of SHAP
 sys.path.append("/home/gabriel/Desktop/POLY/PHD/Research/Repositories/shap")
 import shap
 from shap.maskers import Independent
@@ -37,9 +39,9 @@ model.fit(X, y)
 # %%
 # The company shares f(D_0), f(D_1) to the audit
 D_1 = X[X["Sex"]==1]
-f_D_1 =  model.predict_proba(D_1)[:, [1]]
+f_D_1 =  model.predict_proba(D_1)[:, 1]
 D_0 = X[X["Sex"]==0]
-f_D_0 =  model.predict_proba(D_0)[:, [1]]
+f_D_0 =  model.predict_proba(D_0)[:, 1]
 
 # %%
 # The audit received the provided background and foreground data 
@@ -62,9 +64,9 @@ print(f"The demographic parity is : {parity: .3f}")
 # or if the disparity can be explained by more reasonable
 # variables. To run SHAP, the audits needs two subsets 
 # $S_0\subset D_0$, and $S_1\subset D_1$ of the data.
-# The company agrees to share two subsets of size $M=200$ each for the
-# audit to run SHAP. Before sharing the data, the company runs SHAP 
-# locally to see what would happen.
+# The company agrees to share two subsets of size $M=200$ that 
+# the audit can use to run SHAP. Before sharing the data, the company 
+# runs SHAP locally to see what would happen.
 # %%
 # For simplicity, select S_0 uniformly at random without cheating
 M = 200
@@ -80,8 +82,8 @@ explainer = shap.explainers.Exact(model.predict_proba, mask)
 explainer(S_0)
 
 # %%
-from utils import confidence_interval
-# Local Shapley Values phi(f, x^(i), z^(j))
+from src.utils import confidence_interval
+# Local Shapley Values phi_i(f, x^(j), z^(k))
 LSV = explainer.LSV
 # Choose a subset uniformly at random (to simulate a honest result)
 honest_idx = np.random.choice(subset_background_idx, M)
@@ -103,8 +105,8 @@ plt.xlabel('Shap value')
 plt.show()
 
 # %% [markdown]
-# Ouch! The Sex feature is the fourth most important to explain the disparity is
-# outcomes between genders. This is bad because the company cannot argue that
+# Ouch! The Sex feature is the third most important to explain the disparity is
+# outcomes between sexes. This is bad because the company cannot argue that
 # the model does not explicitely uses the sex feature to make its decisions.
 # Hence, the company decides to cheat and cherry pick which 200 background 
 # samples to send to the audit. However, since the audit has access to the 
@@ -120,8 +122,8 @@ plt.show()
 # from the data (i.e. false positives).
 
 # %%
-from utils import audit_detection
-significance = 0.01
+from src.utils import audit_detection
+significance = 0.05
 detections = 0
 N_1 = len(D_1)
 
@@ -139,11 +141,11 @@ print(f"P(False Positives) : {np.array(detections).sum()/10} %")
 # The probability of false positives is bellow the significance level hence
 # the audit detection is calibrated. The company will then try to fool this
 # detector by solving a linear problem that reduces the SHAP value for sex
-# while ensuring that the modified background distribution is "close" the
+# while ensuring that the modified background distribution is "close" to
 # the data. The first step of the company is to extract the 
 # $\widehat{\bm{\Phi}}(f, S_0', \bm{z}^{(j)})$ coefficients.
 # %%
-from stealth_sampling import explore_attack
+from src.stealth_sampling import explore_attack
 # Get the coefficients
 Phi_S0_zj = LSV.mean(1).T
 # Sensitive index
@@ -195,7 +197,7 @@ plt.show()
 # magnitude. They run the optimization with the hyperparameter
 # to this value and send the cherry-picked background and foreground to the audit
 # %%
-from stealth_sampling import compute_weights
+from src.stealth_sampling import compute_weights
 optim_lambda = 10**0.45
 # Attack !!!
 weights = compute_weights(f_D_1[subset_background_idx], Phi_S0_zj[:, s_idx], optim_lambda)
@@ -208,15 +210,8 @@ f_S_1 = f_D_1[subset_background_idx[biased_idx]]
 # The audit inspects the samples given to them by the company and
 # apply the detector.
 # %%
-hist_args = {'cumulative':True, 'histtype':'step', 'density':True}
-plt.figure()
-plt.hist(f_D_1, bins=50, label=r"$f(D_1)$", color="r", **hist_args)
-plt.hist(f_S_1, bins=50, label=r"$f(S'_1)$", color="r", linestyle="dashed", **hist_args)
-plt.hist(f_D_0, bins=50, label=r"$f(D_0)$", color="b", **hist_args)
-plt.hist(f_S_0, bins=50, label=r"$f(S'_0)$", color="b", linestyle="dashed", **hist_args)
-plt.xlabel("Output")
-plt.ylabel("CDF")
-plt.legend(framealpha=1, loc="lower right")
+from src.utils import plot_CDFs
+plot_CDFs(f_D_0, f_D_1, f_S_0, f_S_1)
 plt.savefig("Images/adult_income/detection.pdf", bbox_inches='tight')
 plt.show()
 
@@ -257,6 +252,6 @@ plt.savefig("Images/adult_income/example_attack.pdf", bbox_inches='tight')
 plt.show()
 # %% [markdown]
 # Now the sex feature is amongst the least important ones and hence
-# the high bias toward this feature has been hidden by folling SHAP.
+# the high bias toward this feature has been hidden.
 # This highights the danger of using SHAP to explain model fairness.
 # %%

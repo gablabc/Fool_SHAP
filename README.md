@@ -26,13 +26,13 @@ Adult-Income dataset to reduce the dependence on `gender`.
 - g++ (-std=c++11)
 - [lemon](https://lemon.cs.elte.hu/trac/lemon/)
 
-# Installation
+## Installation
 
 ### 1. Install LEMON
 
 To install the ``LEMON`` C++ Library, do the following
 
-```console
+```sh
 sudo apt install g++ make cmake 
 wget http://lemon.cs.elte.hu/pub/sources/lemon-1.3.1.tar.gz
 tar xvzf lemon-1.3.1.tar.gz
@@ -49,7 +49,7 @@ sudo make install
 Build all C++ code within the repository
 using the provided MakeFile.
 
-```console
+```sh
 make
 ```
 
@@ -64,7 +64,7 @@ This MakeFile has two targets.
 To attack the `ExactExplainer`, we use monkey-patching via a fork 
 of the original `SHAP` repository
 
-```console
+```sh
 git clone https://github.com/gablabc/shap.git
 cd shap
 git checkout biased_sampling
@@ -75,24 +75,24 @@ If you do not install `SHAP` directly in this repository,
 you must tell the Python interpreter where to look for it.
 In Linux, this is done via the command
 
-```console
+```sh
 export PYTHONPATH=<path to shap>:${PYTHONPATH}
 ```
 
 which can be added to your `.bashrc` file.
 
-# Tutorials
+## Tutorials
 
 The scripts `0_example_adult.py` and `0_example_employment.py` show basic examples of the attack on adult-income
 and a toy employment dataset. These scripts are meant as basic tutorials of **Fool SHAP**. Start by running and understanding these scripts.
 
-# Experiments
+## Experiments
 
 ### Data Preprocessing
 
 Preprocess the data by running
 
-```console
+```sh
 cd datasets
 ./main.sh
 cd ..
@@ -102,7 +102,7 @@ cd ..
 
 Train all models by running
 
-```console
+```sh
 ./train_all.sh
 ```
 
@@ -114,7 +114,7 @@ in `models/performance.csv`.
 
 The **Fool SHAP** attack is conducted in three steps. First of, the malicious company must extract $\hat{\Phi}$ coefficients. This is done via the Python script
 
-```console
+```sh
 python3 2_1_compute_Phis.py --dataset=adult_income --model=xgb --rseed=0 --background_size=<custom> --background_seed=<custom>
 ```
 
@@ -123,19 +123,19 @@ the background distribution. Setting it to `-1` means use all the background poi
 
 The second step of the attack is to compute the weights by solving a MCF for different values of regularization parameter $\lambda=\lambda_\text{min},\ldots,\lambda_\text{max}$
 
-```console
+```sh
 python3 2_2_compute_weights.py --dataset=adult_income --model=xgb --rseed=0 --background_size=<custom> --background_seed=<custom> --min_log=-1 --max_log=2
 ```
 
 The resulting weights for different values of ``background_seed`` will be averaged to provide the final weights. After solving the MCF, we must run the brute-force method which will act as a reference attack to which Fool SHAP can be compared.
 
-```console
+```sh
 python3 2_3_brute_force.py --dataset=adult_income --model=xgb --rseed=0 --background_size=<custom> --background_seed=<custom> 
 ```
 
 The final step is to sample the misleading subsets $S_0',S_1'$ and provide them to the audit.
 
-```console
+```sh
 python3 2_4_final_attack.py --dataset=adult_income --model=xgb --rseed=0 --background_size=<custom> --save
 ```
 

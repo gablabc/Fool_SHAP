@@ -75,25 +75,8 @@ vector<MyDatum> readFileData(string filename) {
 
 
 
-vector<double> readFileBounds(string filename){
-    ifstream ifs(filename);
-    vector<double> bounds;
-    int N(0);
-    for (string line; getline(ifs, line); ) {
-        stringstream ss(line);
-        double feature;
-        while (ss >> feature){
-            bounds.push_back(feature);
-        }
-        N++;
-    }
-    return bounds;
-}
-
-
-
 template <class Datum>
-void MCF(vector<Datum> data, vector<double> bounds, double lambda) {
+void MCF(vector<Datum> data, double lambda) {
 	double N = data.size();
 
 	SmartDigraph g;
@@ -110,7 +93,7 @@ void MCF(vector<Datum> data, vector<double> bounds, double lambda) {
 	for (int i = 0; i < data.size(); ++i) {
 		left.push_back(g.addNode());
 		SmartDigraph::Arc a = g.addArc(s, left[i]);
-		capacity[a] = bounds[i];
+		capacity[a] = N;
 		cost[a] = data[i].coeff;
 		incomming.push_back(a);
 	}
@@ -156,9 +139,8 @@ void MCF(vector<Datum> data, vector<double> bounds, double lambda) {
 int main(int argc, char *argv[]) {
 	// get the data
 	vector<MyDatum> data  = readFileData(argv[1]);
-	vector<double> bounds = readFileBounds(argv[2]);
-	double lambda = stod(argv[3]);
+	double lambda = stod(argv[2]);
 
 	// run the MCF
-	MCF(data, bounds, lambda);
+	MCF(data, lambda);
 }

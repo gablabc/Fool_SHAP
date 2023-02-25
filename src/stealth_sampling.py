@@ -7,7 +7,7 @@ from .utils import audit_detection
 import time
 
 
-def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.0):
+def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, timeout=20.0):
     """
     Compute non-uniform weights for the background distribution
 
@@ -26,51 +26,44 @@ def compute_weights(f_D_1, Phi_S0_zj, regul_lambda=10, epsilon=None, timeout=15.
     --------------------
     weights: (N_1, ) array of non-uniform weights on D_1
     """
-    N_1 = len(f_D_1)
     f_D_1 = f_D_1.reshape((-1, 1))
     while True:
         # Perturb the data a bit
         X = f_D_1 + 1e-5 * np.random.randn(*f_D_1.shape)
         
-        # Compute bounds on weights
-        bounds = N_1 * np.ones(N_1)
         # More than one sensitive attribute
         if Phi_S0_zj.ndim == 2:
-            lin_coeffs = -Phi_S0_zj.mean(1)
-            if epsilon is not None:
-                unmanipulated_Phi = np.mean(Phi_S0_zj, 0)
-                assert epsilon >= 0 and epsilon < N_1
-                J = np.where( (Phi_S0_zj < unmanipulated_Phi).any(axis=1))[0]
-                bounds[J] = epsilon
+            beta = np.sign(Phi_S0_zj.sum(0))
+            lin_coeffs = (beta * Phi_S0_zj).mean(1)
         # Only one sensitive attribute
         else:
-            lin_coeffs = -Phi_S0_zj
+            beta = np.sign(Phi_S0_zj.sum())
+            lin_coeffs = beta * Phi_S0_zj
 
         # Store files
-        np.savetxt("bounds.txt", bounds, fmt="%d")
         dump_svmlight_file(X, lin_coeffs, f"input.txt")
         
         # Run the cpp program
-        cmd = f"./src/shap_biasing/main input.txt bounds.txt {regul_lambda} > output.txt"
+        cmd = f"./src/fool_shap/main input.txt {regul_lambda} > output.txt"
         proc = subprocess.Popen('exec ' + cmd, shell=True)
         try:
             proc.wait(timeout)
             break
+        # If the process takes more than `timeout` seconds, kill it and restart
         except:
             proc.kill()
-            print('killed')
+            # print('killed')
 
     # Load results
     weights = np.loadtxt('./output.txt')
     os.remove('./input.txt' )
-    os.remove('./bounds.txt' )
     os.remove('./output.txt')
     return weights
 
 
 
 def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max, 
-                                        lambda_steps, significance, epsilon=None):
+                                                lambda_steps, significance):
     """
     Searches the space of possible attacks
 
@@ -97,13 +90,14 @@ def explore_attack(f_D_0, f_S_0, f_D_1, Phi_S0_zj, s, lambda_min, lambda_max,
 
     # Log-space search over possible attacls
     lambd_space = np.logspace(lambda_min, lambda_max, lambda_steps)
-    for regul_lambda in tqdm(lambd_space):
+    iterator = tqdm(lambd_space, desc= "Fool SHAP")
+    for regul_lambda in iterator:
         detections.append(0)
         biased_shaps.append([])
 
         # Attack !!!
-        weights.append(compute_weights(f_D_1, Phi_S0_zj[:, s], regul_lambda, epsilon=epsilon))
-        print(f"Spasity of weights : {np.mean(weights[-1] == 0) * 100}%")
+        weights.append(compute_weights(f_D_1, Phi_S0_zj[:, s], regul_lambda))
+        iterator.set_postfix_str(s=f"Sparsity : {np.mean(weights[-1] == 0) * 100:.1f} %")
 
         # Repeat the detection experiment
         for _ in range(100):
@@ -203,7 +197,7 @@ def attack_SHAP_bootstrap(data, coeffs, regul_lambda=10, num_sample=10, num_proc
                 np.random.seed(seed + c2)
                 X = data[idx] + 1e-5 * np.random.randn(500)
                 dump_svmlight_file(X, coeffs, f"./{prefix_p}_input.txt")
-                cmd = f"./shap_biasing/main ./{prefix_p}_input.txt {regul_lambda} > ./{prefix_p}_output.txt"
+                cmd = f"./fool_shap/main ./{prefix_p}_input.txt {regul_lambda} > ./{prefix_p}_output.txt"
                 commands.append(cmd)
             procs = [subprocess.Popen('exec ' + cmd, shell=True) for cmd in commands]
             try:

@@ -68,18 +68,11 @@ of the original `SHAP` repository
 git clone https://github.com/gablabc/shap.git
 cd shap
 git checkout biased_sampling
+python3 setup.py install
 cd ..
 ```
 
-If you do not install `SHAP` directly in this repository,
-you must tell the Python interpreter where to look for it.
-In Linux, this is done via the command
-
-```sh
-export PYTHONPATH=<path to shap>:${PYTHONPATH}
-```
-
-which can be added to your `.bashrc` file.
+The `SHAP` fork should now be installed in the typical location for packages.
 
 ## Tutorials
 

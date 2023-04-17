@@ -99,7 +99,7 @@ pair<double, double> recurse(int n,
     // Hence we go down the correct edge to ensure that S_X and S_Z are kept disjoint
     if (in_SX[ categorical_to_features[current_feature] ] || 
         in_SZ[ categorical_to_features[current_feature] ]){
-        if (in_SX[current_feature]){
+        if (in_SX[ categorical_to_features[current_feature] ]){
             return recurse(x_child, x, z, categorical_to_features, feature, child_left, child_right,
                             threshold, value, W, n_features, phi, in_SX, in_SZ);
         }
